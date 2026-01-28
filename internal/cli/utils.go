@@ -17,6 +17,6 @@ func getLogger(ctx *cli.Context) logger.Logger {
 	return logger.NewLogger(logger.Config{
 		Level:   logger.InfoLevel,
 		Format:  "json",
-		Service: "boilerplate-cli",
+		Service: "general-purpose-chatbot",
 	})
 }

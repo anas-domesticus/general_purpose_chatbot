@@ -4,7 +4,7 @@ import (
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/config"
 )
 
-// Config holds all configuration for the CLI application
+// Config holds all configuration for the CLI application using the standardized pattern
 type Config struct {
 	Common   config.CommonConfig     `yaml:"common,inline"`
 	HTTP     config.HttpServerConfig `yaml:"http,inline"`

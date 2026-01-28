@@ -35,7 +35,7 @@ func main() {
 			log := logger.NewLogger(logger.Config{
 				Level:   logLevel,
 				Format:  "json",
-				Service: "boilerplate-cli",
+				Service: "general-purpose-chatbot",
 			})
 			
 			// Store logger in context for commands to use
@@ -48,6 +48,8 @@ func main() {
 		Commands: []*cli.Command{
 			commands.ConfigCommand(),
 			commands.ServerCommand(),
+			commands.ChatbotCommand(),
+			commands.SlackCommand(),
 		},
 	}
 

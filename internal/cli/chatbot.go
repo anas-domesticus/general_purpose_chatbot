@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/urfave/cli/v2"
 	"google.golang.org/adk/cmd/launcher"
 	"google.golang.org/adk/cmd/launcher/full"
 
@@ -22,38 +23,104 @@ import (
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
 
-func main() {
+// ChatbotCommand returns a command for chatbot operations
+func ChatbotCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "chatbot",
+		Aliases: []string{"bot"},
+		Usage:   "Chatbot operations",
+		Subcommands: []*cli.Command{
+			{
+				Name:   "start",
+				Usage:  "Start the chatbot service",
+				Action: chatbotStartAction,
+			},
+			{
+				Name:   "web",
+				Usage:  "Start the chatbot in web mode with HTTP endpoints",
+				Action: chatbotWebAction,
+			},
+			{
+				Name:   "health",
+				Usage:  "Perform health check",
+				Action: chatbotHealthAction,
+			},
+		},
+	}
+}
+
+func chatbotStartAction(ctx *cli.Context) error {
+	log := getLogger(ctx)
+
 	// Load configuration using standardized pattern
 	cfg := &appconfig.AppConfig{}
 	if err := config.GetConfigFromEnvVars(cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load configuration: %v\n", err)
-		os.Exit(1)
+		log.Error("Failed to load configuration", logger.ErrorField(err))
+		return fmt.Errorf("failed to load configuration: %w", err)
 	}
-
-	// Initialize structured logger
-	log := logger.NewLogger(logger.Config{
-		Level:   cfg.GetLogLevel(),
-		Format:  cfg.Logging.Format,
-		Service: cfg.ServiceName,
-	})
 
 	// Log configuration (without sensitive data)
 	cfg.LogConfig(log)
 
 	log.Info("Starting General Purpose Chatbot",
 		logger.StringField("version", cfg.Version),
-		logger.StringField("claude_model", cfg.Anthropic.Model),
-		logger.StringField("service_name", cfg.ServiceName))
+		logger.StringField("claude_model", cfg.Anthropic.Model))
 
 	// Create context for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
+	shutdownCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Handle special health check command for Docker healthcheck
-	if len(os.Args) > 1 && os.Args[1] == "health" {
-		performHealthCheck(cfg.Port, log)
-		return
+	// Set up graceful shutdown
+	setupGracefulShutdown(cancel, log)
+
+	// Create Claude model instance
+	claudeModel, err := anthropic.NewClaudeModel(cfg.Anthropic.APIKey, cfg.Anthropic.Model)
+	if err != nil {
+		log.Error("Failed to create Claude model", logger.ErrorField(err))
+		return fmt.Errorf("failed to create Claude model: %w", err)
 	}
+
+	log.Info("Claude model created successfully")
+
+	// Create agent loader with Claude model
+	agentLoader := agents.NewLoader(claudeModel)
+	log.Info("Agent loader created successfully")
+
+	// Configure the ADK launcher
+	adkConfig := &launcher.Config{
+		AgentLoader: agentLoader,
+	}
+
+	// Create and execute the ADK launcher
+	adkLauncher := full.NewLauncher()
+
+	log.Info("Starting ADK launcher")
+
+	// Execute the launcher
+	if err := adkLauncher.Execute(shutdownCtx, adkConfig, []string{}); err != nil {
+		log.Error("ADK launcher failed", logger.ErrorField(err))
+		return fmt.Errorf("ADK launcher failed: %w", err)
+	}
+
+	log.Info("Chatbot completed successfully")
+	return nil
+}
+
+func chatbotWebAction(ctx *cli.Context) error {
+	log := getLogger(ctx)
+
+	// Load configuration
+	cfg := &appconfig.AppConfig{}
+	if err := config.GetConfigFromEnvVars(cfg); err != nil {
+		log.Error("Failed to load configuration", logger.ErrorField(err))
+		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	cfg.LogConfig(log)
+
+	// Create context for graceful shutdown
+	shutdownCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	// Set up graceful shutdown
 	setupGracefulShutdown(cancel, log)
@@ -70,42 +137,50 @@ func main() {
 	claudeModel, err := anthropic.NewClaudeModel(cfg.Anthropic.APIKey, cfg.Anthropic.Model)
 	if err != nil {
 		log.Error("Failed to create Claude model", logger.ErrorField(err))
-		os.Exit(1)
+		return fmt.Errorf("failed to create Claude model: %w", err)
 	}
 
-	log.Info("Claude model created successfully")
-
-	// Create agent loader with Claude model
+	// Create agent loader
 	agentLoader := agents.NewLoader(claudeModel)
 
-	log.Info("Agent loader created successfully")
-
-	// Configure the ADK launcher with enhanced middleware
+	// Configure the ADK launcher
 	adkConfig := &launcher.Config{
 		AgentLoader: agentLoader,
 	}
 
-	// Set up HTTP middleware for web mode
-	if len(os.Args) > 1 && os.Args[1] == "web" {
-		setupWebServerWithMonitoring(ctx, adkConfig, healthMonitor, log, cfg)
-		return
+	// Set up HTTP server with monitoring endpoints
+	setupWebServerWithMonitoring(shutdownCtx, adkConfig, healthMonitor, log, cfg)
+
+	return nil
+}
+
+func chatbotHealthAction(ctx *cli.Context) error {
+	log := getLogger(ctx)
+
+	// Load configuration
+	cfg := &appconfig.AppConfig{}
+	if err := config.GetConfigFromEnvVars(cfg); err != nil {
+		log.Error("Failed to load configuration", logger.ErrorField(err))
+		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Create and execute the ADK launcher
-	adkLauncher := full.NewLauncher()
+	// Perform health check
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/health/live", cfg.Port))
+	if err != nil {
+		log.Error("Health check failed", logger.ErrorField(err))
+		return fmt.Errorf("health check failed: %w", err)
+	}
+	defer resp.Body.Close()
 
-	log.Info("Starting ADK launcher",
-		logger.StringField("mode", strings.Join(os.Args[1:], " ")))
-
-	// Execute the launcher with command line arguments
-	if err := adkLauncher.Execute(ctx, adkConfig, os.Args[1:]); err != nil {
-		log.Error("ADK launcher failed", 
-			logger.ErrorField(err),
-			logger.StringField("usage", adkLauncher.CommandLineSyntax()))
-		os.Exit(1)
+	if resp.StatusCode != http.StatusOK {
+		log.Error("Health check failed with status", logger.IntField("status_code", resp.StatusCode))
+		return fmt.Errorf("health check failed with status: %d", resp.StatusCode)
 	}
 
-	log.Info("ADK launcher completed successfully")
+	log.Info("Health check passed")
+	fmt.Println("✅ Health check passed")
+	return nil
 }
 
 // setupGracefulShutdown sets up signal handling for graceful shutdown
@@ -193,25 +268,4 @@ func setupWebServerWithMonitoring(ctx context.Context, adkConfig *launcher.Confi
 	} else {
 		log.Info("HTTP server shutdown completed")
 	}
-}
-
-// performHealthCheck performs a health check for Docker healthcheck
-func performHealthCheck(port int, log logger.Logger) {
-	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/health/live", port))
-	if err != nil {
-		log.Error("Health check failed", logger.ErrorField(err))
-		fmt.Fprintf(os.Stderr, "Health check failed: %v\n", err)
-		os.Exit(1)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		log.Error("Health check failed with status", logger.IntField("status_code", resp.StatusCode))
-		fmt.Fprintf(os.Stderr, "Health check failed with status: %d\n", resp.StatusCode)
-		os.Exit(1)
-	}
-
-	log.Info("Health check passed")
-	fmt.Println("Health check passed")
 }

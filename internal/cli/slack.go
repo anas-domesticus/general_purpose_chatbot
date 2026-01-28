@@ -1,10 +1,13 @@
-package main
+package cli
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/urfave/cli/v2"
 
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/slack"
 	appconfig "github.com/lewisedginton/general_purpose_chatbot/internal/config"
@@ -12,33 +15,52 @@ import (
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
 
-func main() {
+// SlackCommand returns a command for Slack operations
+func SlackCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "slack",
+		Aliases: []string{"sl"},
+		Usage:   "Slack bot operations",
+		Subcommands: []*cli.Command{
+			{
+				Name:   "start",
+				Usage:  "Start the Slack bot",
+				Action: slackStartAction,
+			},
+		},
+	}
+}
+
+func slackStartAction(ctx *cli.Context) error {
+	log := getLogger(ctx)
+
 	// Load configuration using standardized pattern
 	cfg := &appconfig.AppConfig{}
 	if err := config.GetConfigFromEnvVars(cfg); err != nil {
-		os.Exit(1)
+		log.Error("Failed to load configuration", logger.ErrorField(err))
+		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Initialize structured logger
-	log := logger.NewLogger(logger.Config{
+	// Update service name for Slack bot
+	slackLogger := logger.NewLogger(logger.Config{
 		Level:   cfg.GetLogLevel(),
 		Format:  cfg.Logging.Format,
 		Service: cfg.ServiceName + "-slack-bot",
 	})
 
-	log.Info("Starting Slack Bot")
+	slackLogger.Info("Starting Slack Bot")
 
 	// Get required environment variables for Slack
 	slackBotToken := os.Getenv("SLACK_BOT_TOKEN")
 	if slackBotToken == "" {
-		log.Error("SLACK_BOT_TOKEN environment variable is required (format: xoxb-*)")
-		os.Exit(1)
+		slackLogger.Error("SLACK_BOT_TOKEN environment variable is required (format: xoxb-*)")
+		return fmt.Errorf("SLACK_BOT_TOKEN environment variable is required")
 	}
 
 	slackAppToken := os.Getenv("SLACK_APP_TOKEN")
 	if slackAppToken == "" {
-		log.Error("SLACK_APP_TOKEN environment variable is required (format: xapp-*)")
-		os.Exit(1)
+		slackLogger.Error("SLACK_APP_TOKEN environment variable is required (format: xapp-*)")
+		return fmt.Errorf("SLACK_APP_TOKEN environment variable is required")
 	}
 
 	// Optional: ADK server URL (defaults to local)
@@ -53,7 +75,7 @@ func main() {
 		agentName = "slack_assistant"
 	}
 
-	log.Info("Slack bot configuration loaded",
+	slackLogger.Info("Slack bot configuration loaded",
 		logger.StringField("adk_base_url", adkBaseURL),
 		logger.StringField("agent_name", agentName),
 		logger.StringField("bot_token_prefix", slackBotToken[:12]+"..."),
@@ -70,23 +92,23 @@ func main() {
 	// Create the Slack connector
 	connector, err := slack.NewConnector(slackConfig)
 	if err != nil {
-		log.Error("Failed to create Slack connector", logger.ErrorField(err))
-		os.Exit(1)
+		slackLogger.Error("Failed to create Slack connector", logger.ErrorField(err))
+		return fmt.Errorf("failed to create Slack connector: %w", err)
 	}
 
 	// Test connectivity
-	log.Info("Testing Slack connectivity")
+	slackLogger.Info("Testing Slack connectivity")
 	botInfo, err := connector.GetBotInfo()
 	if err != nil {
-		log.Error("Failed to connect to Slack API", logger.ErrorField(err))
-		os.Exit(1)
+		slackLogger.Error("Failed to connect to Slack API", logger.ErrorField(err))
+		return fmt.Errorf("failed to connect to Slack API: %w", err)
 	}
-	log.Info("Connected to Slack successfully",
+	slackLogger.Info("Connected to Slack successfully",
 		logger.StringField("bot_name", botInfo.Name),
 		logger.StringField("bot_id", botInfo.ID))
 
 	// Set up context for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
+	shutdownCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Handle shutdown signals
@@ -96,35 +118,33 @@ func main() {
 	// Start the connector in a goroutine
 	errChan := make(chan error, 1)
 	go func() {
-		log.Info("Starting Socket Mode connection")
-		err := connector.Start(ctx)
+		slackLogger.Info("Starting Socket Mode connection")
+		err := connector.Start(shutdownCtx)
 		if err != nil {
 			errChan <- err
 		}
 	}()
 
-	log.Info("Slack bot is running! Press Ctrl+C to stop")
-	log.Info("Bot Setup Instructions",
-		logger.StringField("instruction_1", "Make sure your ADK server is running on "+adkBaseURL),
-		logger.StringField("instruction_2", "The bot will respond to direct messages (DMs) and @mentions in channels"),
-		logger.StringField("instruction_3", "Required OAuth scopes: app_mentions:read, channels:history, chat:write, im:history, im:read"),
-		logger.StringField("instruction_4", "Enable Socket Mode in your Slack app settings"))
+	slackLogger.Info("Slack bot is running! Press Ctrl+C to stop")
 
 	// Wait for shutdown signal or error
 	select {
 	case sig := <-sigChan:
-		log.Info("Received shutdown signal", logger.StringField("signal", sig.String()))
+		slackLogger.Info("Received shutdown signal", logger.StringField("signal", sig.String()))
 		cancel()
 	case err := <-errChan:
-		log.Error("Connector error", logger.ErrorField(err))
+		slackLogger.Error("Connector error", logger.ErrorField(err))
 		cancel()
+		return fmt.Errorf("connector error: %w", err)
 	}
 
 	// Graceful shutdown
-	log.Info("Stopping Slack connector")
+	slackLogger.Info("Stopping Slack connector")
 	if err := connector.Stop(); err != nil {
-		log.Error("Error stopping connector", logger.ErrorField(err))
+		slackLogger.Error("Error stopping connector", logger.ErrorField(err))
+		return fmt.Errorf("error stopping connector: %w", err)
 	}
 
-	log.Info("Slack bot stopped")
+	slackLogger.Info("Slack bot stopped")
+	return nil
 }

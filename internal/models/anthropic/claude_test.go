@@ -5,6 +5,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 )
@@ -39,18 +41,13 @@ func TestNewClaudeModel(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			model, err := NewClaudeModel(tt.apiKey, tt.modelName)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("NewClaudeModel() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !tt.wantErr {
-				if model == nil {
-					t.Error("expected model to be non-nil")
-					return
-				}
-				if model.Name() == "" {
-					t.Error("expected model name to be non-empty")
-				}
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Nil(t, model)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, model)
+				assert.NotEmpty(t, model.Name())
 			}
 		})
 	}
@@ -58,14 +55,10 @@ func TestNewClaudeModel(t *testing.T) {
 
 func TestClaudeModel_Name(t *testing.T) {
 	model, err := NewClaudeModel("sk-ant-test-key", "claude-3-5-sonnet-20241022")
-	if err != nil {
-		t.Fatalf("failed to create model: %v", err)
-	}
+	require.NoError(t, err)
 
 	expected := "claude-3-5-sonnet-20241022"
-	if got := model.Name(); got != expected {
-		t.Errorf("Name() = %v, want %v", got, expected)
-	}
+	assert.Equal(t, expected, model.Name())
 }
 
 func TestTransformADKToAnthropic(t *testing.T) {
@@ -122,17 +115,12 @@ func TestTransformADKToAnthropic(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			messages, system, err := transformADKToAnthropic(tt.contents)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("transformADKToAnthropic() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !tt.wantErr {
-				if len(messages) != tt.wantMsgLen {
-					t.Errorf("transformADKToAnthropic() messages length = %v, want %v", len(messages), tt.wantMsgLen)
-				}
-				if system != tt.wantSystem {
-					t.Errorf("transformADKToAnthropic() system = %v, want %v", system, tt.wantSystem)
-				}
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Len(t, messages, tt.wantMsgLen)
+				assert.Equal(t, tt.wantSystem, system)
 			}
 		})
 	}
@@ -146,9 +134,7 @@ func TestClaudeModel_GenerateContent_Integration(t *testing.T) {
 	}
 
 	claudeModel, err := NewClaudeModel(apiKey, "claude-3-5-sonnet-20241022")
-	if err != nil {
-		t.Fatalf("failed to create model: %v", err)
-	}
+	require.NoError(t, err)
 
 	req := &model.LLMRequest{
 		Model: claudeModel.Name(),
@@ -174,25 +160,15 @@ func TestClaudeModel_GenerateContent_Integration(t *testing.T) {
 		
 		responseCount := 0
 		for response, err := range iter {
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if response == nil {
-				t.Fatal("response is nil")
-			}
-			if response.Content == nil {
-				t.Fatal("response content is nil")
-			}
-			if len(response.Content.Parts) == 0 {
-				t.Fatal("response has no parts")
-			}
+			require.NoError(t, err)
+			assert.NotNil(t, response)
+			assert.NotNil(t, response.Content)
+			assert.NotEmpty(t, response.Content.Parts)
 			
 			responseCount++
 		}
 		
-		if responseCount == 0 {
-			t.Fatal("no responses received")
-		}
+		assert.Greater(t, responseCount, 0, "should receive at least one response")
 	})
 }
 
