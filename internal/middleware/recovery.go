@@ -107,7 +107,7 @@ func getClientIP(r *http.Request) string {
 	// Check X-Forwarded-For header (most common)
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		// Take the first IP in the chain
-		if idx := 0; idx < len(xff); idx++ {
+		for idx := 0; idx < len(xff); idx++ {
 			if xff[idx] == ',' {
 				return xff[:idx]
 			}
