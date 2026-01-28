@@ -43,6 +43,7 @@ coverage.out
 /bin/
 /build/
 /dist/
+/cli
 
 # Temporary files
 *.tmp
