@@ -45,8 +45,11 @@ func NewConnector(config Config) (*Connector, error) {
 	}
 
 	// Initialize Slack clients
-	client := slack.New(config.BotToken)
-	socketMode := socketmode.New(client, socketmode.OptionAppToken(config.AppToken))
+	client := slack.New(
+		config.BotToken,
+		slack.OptionAppLevelToken(config.AppToken),
+	)
+	socketMode := socketmode.New(client)
 
 	// Initialize ADK bridge
 	adkBridge := bridge.NewBridge(config.ADKBaseURL, config.AgentName)
@@ -136,9 +139,11 @@ func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.M
 	}
 
 	// Skip messages from the bot itself
-	botInfo, err := c.client.GetBotInfo(event.BotID)
-	if err == nil && botInfo.UserID == event.User {
-		return nil
+	if event.BotID != "" {
+		botInfo, err := c.client.GetBotInfo(slack.GetBotInfoParameters{Bot: event.BotID})
+		if err == nil && botInfo.UserID == event.User {
+			return nil
+		}
 	}
 
 	// Only process direct messages (DMs have channel type starting with D)
@@ -243,5 +248,5 @@ func (c *Connector) GetBotInfo() (*slack.Bot, error) {
 		return nil, err
 	}
 	
-	return c.client.GetBotInfo(auth.BotID)
+	return c.client.GetBotInfo(slack.GetBotInfoParameters{Bot: auth.BotID})
 }

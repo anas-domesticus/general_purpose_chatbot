@@ -2,24 +2,87 @@ package anthropic
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"iter"
 	"log/slog"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"google.golang.org/adk/model"
+
+	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
 
 // ClaudeModel implements the model.LLM interface for Anthropic Claude models
 type ClaudeModel struct {
-	client    anthropic.Client
-	modelName string
-	logger    *slog.Logger
+	client        anthropic.Client
+	modelName     string
+	logger        *slog.Logger
+	structLogger  logger.Logger
+	retryConfig   RetryConfig
+	circuitBreaker *CircuitBreaker
 }
 
-// NewClaudeModel creates a new Claude model instance
+// RetryConfig holds configuration for retry logic
+type RetryConfig struct {
+	MaxRetries     int
+	InitialBackoff time.Duration
+	MaxBackoff     time.Duration
+	BackoffFactor  float64
+}
+
+// DefaultRetryConfig returns sensible defaults for retry configuration
+func DefaultRetryConfig() RetryConfig {
+	return RetryConfig{
+		MaxRetries:     3,
+		InitialBackoff: 1 * time.Second,
+		MaxBackoff:     10 * time.Second,
+		BackoffFactor:  2.0,
+	}
+}
+
+// CircuitBreaker implements a simple circuit breaker pattern
+type CircuitBreaker struct {
+	failureCount     int
+	failureThreshold int
+	resetTimeout     time.Duration
+	lastFailureTime  time.Time
+	state           CircuitState
+}
+
+type CircuitState int
+
+const (
+	CircuitClosed CircuitState = iota
+	CircuitOpen
+	CircuitHalfOpen
+)
+
+// NewCircuitBreaker creates a new circuit breaker
+func NewCircuitBreaker(failureThreshold int, resetTimeout time.Duration) *CircuitBreaker {
+	return &CircuitBreaker{
+		failureThreshold: failureThreshold,
+		resetTimeout:     resetTimeout,
+		state:           CircuitClosed,
+	}
+}
+
+// NewClaudeModel creates a new Claude model instance with enhanced error handling
 func NewClaudeModel(apiKey, modelName string, opts ...option.RequestOption) (*ClaudeModel, error) {
+	return NewClaudeModelWithConfig(apiKey, modelName, ClaudeConfig{}, opts...)
+}
+
+// ClaudeConfig holds configuration options for Claude model
+type ClaudeConfig struct {
+	Logger         logger.Logger
+	RetryConfig    *RetryConfig
+	CircuitBreaker *CircuitBreaker
+}
+
+// NewClaudeModelWithConfig creates a new Claude model instance with full configuration
+func NewClaudeModelWithConfig(apiKey, modelName string, config ClaudeConfig, opts ...option.RequestOption) (*ClaudeModel, error) {
 	if apiKey == "" {
 		return nil, fmt.Errorf("anthropic API key is required")
 	}
@@ -31,13 +94,38 @@ func NewClaudeModel(apiKey, modelName string, opts ...option.RequestOption) (*Cl
 		append([]option.RequestOption{option.WithAPIKey(apiKey)}, opts...)...,
 	)
 
-	logger := slog.With("component", "claude_model", "model", modelName)
+	slogLogger := slog.With("component", "claude_model", "model", modelName)
 
-	return &ClaudeModel{
-		client:    client,
-		modelName: modelName,
-		logger:    logger,
-	}, nil
+	// Set up retry configuration
+	retryConfig := DefaultRetryConfig()
+	if config.RetryConfig != nil {
+		retryConfig = *config.RetryConfig
+	}
+
+	// Set up circuit breaker
+	circuitBreaker := config.CircuitBreaker
+	if circuitBreaker == nil {
+		circuitBreaker = NewCircuitBreaker(5, 30*time.Second) // 5 failures, 30s reset
+	}
+
+	model := &ClaudeModel{
+		client:         client,
+		modelName:      modelName,
+		logger:         slogLogger,
+		structLogger:   config.Logger,
+		retryConfig:    retryConfig,
+		circuitBreaker: circuitBreaker,
+	}
+
+	// Log initialization
+	if model.structLogger != nil {
+		model.structLogger.Info("Claude model initialized",
+			logger.StringField("model", modelName),
+			logger.IntField("max_retries", retryConfig.MaxRetries),
+			logger.DurationField("initial_backoff", retryConfig.InitialBackoff))
+	}
+
+	return model, nil
 }
 
 // Name returns the name of the model
