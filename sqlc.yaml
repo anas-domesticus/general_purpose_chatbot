@@ -1,0 +1,11 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "internal/cli/persistence/queries.sql"
+    schema: "internal/cli/persistence/migrations"
+    gen:
+      go:
+        package: "sqlc"
+        out: "internal/cli/persistence/sqlc"
+        emit_json_tags: true
+        emit_interface: true
