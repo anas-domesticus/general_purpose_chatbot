@@ -1,0 +1,55 @@
+# https://taskfile.dev
+version: '3'
+
+env:
+  CGO_ENABLED: 0
+
+tasks:
+  default:
+    desc: List all available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  # Development setup
+  setup:
+    desc: Install development tools
+    cmds:
+      - echo "📦 Installing golangci-lint..."
+      - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - echo "✅ Setup complete!"
+
+  # Linting
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./...
+
+  lint:fix:
+    desc: Run golangci-lint with auto-fix
+    cmds:
+      - golangci-lint run --fix ./...
+
+  # Testing
+  test:
+    desc: Run tests
+    cmds:
+      - go test ./...
+
+  test:race:
+    desc: Run tests with race detection
+    cmds:
+      - go test -race ./...
+
+  # Building
+  build:
+    desc: Build the application
+    cmds:
+      - go build -v ./...
+
+  # Cleanup
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - go clean ./...
+      - rm -f coverage.out coverage.html
