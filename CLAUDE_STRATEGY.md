@@ -22,6 +22,7 @@ import (
     "context"
     "google.golang.org/adk/model"
     anthropic "github.com/anthropics/anthropic-sdk-go"
+    "github.com/anthropics/anthropic-sdk-go/option"
 )
 
 type ClaudeModel struct {
@@ -36,7 +37,7 @@ func NewClaudeModel(apiKey, modelName string) (*ClaudeModel, error) {
     
     return &ClaudeModel{
         client:    client,
-        modelName: modelName, // "claude-3-5-sonnet-20241022"
+        modelName: modelName, // "claude-3-5-sonnet-20241022" or latest
     }, nil
 }
 
@@ -61,10 +62,10 @@ func (c *ClaudeModel) Generate(ctx context.Context, req *model.LLMRequest) (*mod
 
 ### Usage in agents
 ```go
-// Create Claude model instead of Gemini
+// Create Claude model (Sonnet 4.5 recommended)
 claudeModel, err := anthropic.NewClaudeModel(
     os.Getenv("ANTHROPIC_API_KEY"),
-    "claude-3-5-sonnet-20241022",
+    "claude-3-5-sonnet-20241022", // or latest available
 )
 
 // Rest of ADK code unchanged

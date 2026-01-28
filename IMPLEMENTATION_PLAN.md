@@ -31,10 +31,8 @@ general_purpose_chatbot/
 │   ├── connectors/             # Chat platform integrations
 │   │   ├── slack/              # Slack Socket Mode/Events API
 │   │   └── bridge/             # Connector <-> ADK bridge
-│   ├── tools/                  # Custom function tools
-│   │   └── k8s/                # Kubernetes tools
 │   └── models/                 # Custom model implementations
-│       └── anthropic/          # Future Claude support
+│       └── anthropic/          # Claude Sonnet integration
 └── config/
     ├── agents/                 # Agent instructions
     └── chatbot.yml            # Main configuration
@@ -158,7 +156,7 @@ func main() {
 }
 ```
 
-#### Day 3-4: Basic Slack Agent
+#### Day 5-7: Basic Agent Setup
 ```go
 // internal/agents/slack.go
 func NewSlackAgent(model model.LLM) (agent.Agent, error) {
@@ -168,18 +166,24 @@ func NewSlackAgent(model model.LLM) (agent.Agent, error) {
         Description: "Helpful assistant for Slack workspace",
         Instruction: loadInstructionFile("config/agents/slack.txt"),
         Tools: []tool.Tool{
-            // Start with simple tools, add K8s later
-            functiontool.New("echo", "Echo back text", echoTool),
+            // Start with simple built-in tools for testing
+            functiontool.New("echo", "Echo back text for testing", echoTool),
         },
     })
 }
 
-func echoTool(text string) string {
-    return fmt.Sprintf("Echo: %s", text)
+// internal/agents/registry.go
+func NewLoader(model model.LLM) agent.Loader {
+    slackAgent, err := NewSlackAgent(model)
+    if err != nil {
+        log.Fatalf("Failed to create slack agent: %v", err)
+    }
+    
+    return agent.NewSingleLoader(slackAgent)
 }
 ```
 
-#### Day 5-7: Slack Connector
+### Week 2: Slack Integration
 ```go
 // internal/connectors/slack/connector.go - Socket Mode first
 package slack
@@ -211,9 +215,38 @@ func (c *Connector) Start(ctx context.Context) error {
 }
 ```
 
-### Week 2: Integration & Testing
+#### Day 8-14: Slack Connector & Bridge
+```go
+// internal/connectors/slack/connector.go - Socket Mode
+package slack
 
-#### Day 8-10: ADK Bridge
+import (
+    "context"
+    "log"
+    
+    "github.com/slack-go/slack"
+    "github.com/slack-go/slack/socketmode"
+)
+
+type Connector struct {
+    client     *slack.Client
+    socketMode *socketmode.Client
+    bridge     *bridge.Bridge
+}
+
+func (c *Connector) Start(ctx context.Context) error {
+    c.socketMode.Run()
+    
+    for envelope := range c.socketMode.Events {
+        switch envelope.Type {
+        case socketmode.EventTypeEventsAPI:
+            c.handleEvent(envelope.Data.(slackevents.EventsAPIEvent))
+        }
+    }
+    return nil
+}
+```
+
 ```go
 // internal/connectors/bridge/bridge.go
 type Bridge struct {
@@ -228,45 +261,24 @@ func (b *Bridge) SendToAgent(agentName, sessionID, message string) (*Response, e
 }
 ```
 
-#### Day 11-14: End-to-End Testing
+### Week 3-4: Production Polish
+
+#### End-to-End Testing & Production Features
 - **Local development** - Use ADK web UI to test agents
-- **Slack integration** - Test with real Slack workspace
-- **Basic K8s tools** - Add kubectl pod listing functionality
+- **Slack integration** - Test with real Slack workspace  
+- **Session persistence** - Conversations maintain context
 - **Error handling** - Proper error responses and logging
+- **Performance monitoring** - Health checks and metrics
+- **Docker deployment** - Containerization for production
 
-### Week 3-4: Advanced Features & Production Ready
-
-#### Advanced Kubernetes Tools
+#### Enhanced Claude Integration (Optional)
 ```go
-// internal/tools/k8s/pods.go
-func GetPods(namespace string) ([]Pod, error) {
-    // Use client-go to list pods with status
-    // Return formatted pod information with health
-}
-
-func GetLogs(podName, namespace string, lines int) (string, error) {
-    // Get recent logs from specified pod
-    // Include timestamp and container info
-}
-
-func DescribePod(podName, namespace string) (string, error) {
-    // Get detailed pod information
-    // Events, status, resource usage
-}
-
-func GetNodeStatus() ([]Node, error) {
-    // Cluster node health and capacity
-}
-```
-
-#### Enhanced Claude Integration
-```go
-// Add streaming support to Claude model
+// Add streaming support to Claude model (if needed)
 func (c *ClaudeModel) GenerateStream(ctx context.Context, req *model.LLMRequest) (<-chan *model.StreamChunk, error) {
     // Stream Claude responses for better UX
 }
 
-// Add tool calling support
+// Tool calling support built-in with Claude
 func (c *ClaudeModel) SupportsTools() bool {
     return true // Claude excels at tool usage
 }
@@ -283,23 +295,21 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 export SLACK_BOT_TOKEN="xoxb-..."
 export SLACK_APP_TOKEN="xapp-..."
 export SLACK_SIGNING_SECRET="..."
-
-# Kubernetes (if outside cluster)
-export KUBECONFIG="/path/to/kubeconfig"
 ```
 
 ### Agent Instructions
 ```
 # config/agents/slack.txt
-You are a helpful technical assistant in a Slack workspace for a development team.
+You are a helpful assistant in a Slack workspace for a development team.
 
 You can help with:
-- Kubernetes operations (checking pods, logs, troubleshooting)
 - General development questions  
-- Code explanations
+- Code explanations and debugging
+- Technical discussions
+- Project planning and brainstorming
 
 Be concise and professional. Use Slack formatting when appropriate.
-When helping with K8s issues, always check pod status first, then logs if needed.
+Ask clarifying questions when you need more context.
 ```
 
 ## Success Criteria
@@ -307,28 +317,27 @@ When helping with K8s issues, always check pod status first, then logs if needed
 ### Week 1
 - [ ] Claude Sonnet 4.5 model implementation working
 - [ ] ADK agent with Claude responds in web UI
-- [ ] Basic Slack connector routing messages
-- [ ] Simple K8s pod listing tool functional
+- [ ] Basic agent conversation functionality
 
 ### Week 2  
 - [ ] Full Slack integration (Socket Mode production-ready)
 - [ ] Session persistence across conversations
-- [ ] Complete K8s troubleshooting toolkit
+- [ ] End-to-end Slack ↔ Claude conversation flow
 - [ ] Error handling, logging, and monitoring
 
 ### Week 3-4
 - [ ] Advanced agent capabilities (multi-step reasoning)
-- [ ] Production deployment (Docker, K8s manifests)
+- [ ] Production deployment (Docker containers)
 - [ ] Performance optimization and caching
 - [ ] Documentation and testing suite
-- [ ] Agent spawning and orchestration
+- [ ] Multi-agent orchestration (if needed)
 
 ## Risk Mitigation
 
-1. **Claude support delay** → Start with Gemini, proven migration path
+1. **Claude support uncertainty** → Custom implementation bypasses Google dependency
 2. **ADK Go limitations** → Well-documented official examples exist
 3. **Slack complexity** → Socket Mode simpler than webhooks for MVP
-4. **K8s permissions** → Start with read-only operations
+4. **Model interface changes** → Wrapper pattern isolates changes
 
 ## Next Steps
 

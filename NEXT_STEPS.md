@@ -33,14 +33,6 @@
 
 ## Phase 2: Production Ready (Week 2)
 
-### Agent 4: Kubernetes Tools
-**Task:** Implement K8s troubleshooting tools as ADK function tools
-**Files to create:**
-- `internal/tools/k8s/pods.go`
-- `internal/tools/k8s/logs.go`
-- `internal/tools/k8s/describe.go`
-
-### Agent 5: Error Handling & Monitoring
 **Task:** Production-grade error handling, logging, and health checks
 **Files to create:**
 - `internal/monitoring/health.go`
