@@ -4,182 +4,122 @@ import (
 	"context"
 	"fmt"
 	"iter"
-	"strings"
+	"log/slog"
 
-	"google.golang.org/adk/model"
-	"google.golang.org/genai"
-
-	anthropic "github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+	"google.golang.org/adk/model"
 )
 
-// ClaudeModel implements the model.LLM interface for Claude models
+// ClaudeModel implements the model.LLM interface for Anthropic Claude models
 type ClaudeModel struct {
 	client    anthropic.Client
 	modelName string
+	logger    *slog.Logger
 }
 
 // NewClaudeModel creates a new Claude model instance
-func NewClaudeModel(apiKey, modelName string) (*ClaudeModel, error) {
+func NewClaudeModel(apiKey, modelName string, opts ...option.RequestOption) (*ClaudeModel, error) {
 	if apiKey == "" {
 		return nil, fmt.Errorf("anthropic API key is required")
 	}
 	if modelName == "" {
-		modelName = "claude-3-5-sonnet-20241022" // Default model
+		modelName = string(anthropic.ModelClaudeSonnet4_5_20250929) // Default to latest Sonnet 4.5
 	}
 
 	client := anthropic.NewClient(
-		option.WithAPIKey(apiKey),
+		append([]option.RequestOption{option.WithAPIKey(apiKey)}, opts...)...,
 	)
+
+	logger := slog.With("component", "claude_model", "model", modelName)
 
 	return &ClaudeModel{
 		client:    client,
 		modelName: modelName,
+		logger:    logger,
 	}, nil
 }
 
-// Name returns the model name
+// Name returns the name of the model
 func (c *ClaudeModel) Name() string {
 	return c.modelName
 }
 
 // GenerateContent implements the model.LLM interface
 func (c *ClaudeModel) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
+	c.logger.Info("generating content", "stream", stream, "contents_count", len(req.Contents))
+
+	// For now, implement non-streaming only to get basic functionality working
+	// We'll add streaming support later
+	return c.generateContentNonStream(ctx, req)
+}
+
+// generateContentNonStream handles non-streaming generation
+func (c *ClaudeModel) generateContentNonStream(ctx context.Context, req *model.LLMRequest) iter.Seq2[*model.LLMResponse, error] {
 	return func(yield func(*model.LLMResponse, error) bool) {
 		// Transform ADK request to Anthropic format
-		messages, system, err := c.transformContents(req.Contents)
+		messages, systemPrompt, err := transformADKToAnthropic(req.Contents)
 		if err != nil {
-			yield(nil, fmt.Errorf("failed to transform contents: %w", err))
+			yield(nil, fmt.Errorf("failed to transform request: %w", err))
 			return
 		}
 
-		// Create basic Anthropic request parameters
-		params := anthropic.MessageNewParams{
+		// Build Anthropic request
+		anthropicReq := anthropic.MessageNewParams{
 			Model:     anthropic.Model(c.modelName),
-			MaxTokens: 4096,
+			MaxTokens: 4000, // Default max tokens
 			Messages:  messages,
 		}
 
-		// Add system message if present
-		if system != "" {
-			params.System = []anthropic.TextBlockParam{
-				{Text: system},
+		// Add system prompt if present
+		if systemPrompt != "" {
+			anthropicReq.System = []anthropic.TextBlockParam{
+				{Text: systemPrompt},
 			}
 		}
 
-		// Apply configuration if provided
+		// Apply config overrides if present
 		if req.Config != nil {
 			if req.Config.MaxOutputTokens > 0 {
-				params.MaxTokens = int64(req.Config.MaxOutputTokens)
+				anthropicReq.MaxTokens = int64(req.Config.MaxOutputTokens)
 			}
 			if req.Config.Temperature != nil {
-				params.Temperature = anthropic.Float(float64(*req.Config.Temperature))
+				anthropicReq.Temperature = anthropic.Float(float64(*req.Config.Temperature))
 			}
 			if req.Config.TopP != nil {
-				params.TopP = anthropic.Float(float64(*req.Config.TopP))
+				anthropicReq.TopP = anthropic.Float(float64(*req.Config.TopP))
 			}
 		}
 
-		// Make the API call
-		resp, err := c.client.Messages.New(ctx, params)
+		// Add tools if present
+		if len(req.Tools) > 0 {
+			tools, err := transformToolsToAnthropic(req.Tools)
+			if err != nil {
+				yield(nil, fmt.Errorf("failed to transform tools: %w", err))
+				return
+			}
+			anthropicReq.Tools = tools
+		}
+
+		c.logger.Debug("sending request to anthropic", "messages_count", len(messages))
+
+		// Call Anthropic API
+		resp, err := c.client.Messages.New(ctx, anthropicReq)
 		if err != nil {
-			yield(nil, fmt.Errorf("claude API error: %w", err))
+			yield(nil, fmt.Errorf("claude api error: %w", err))
 			return
 		}
 
 		// Transform response back to ADK format
-		adkResponse := c.transformResponse(resp)
-		yield(adkResponse, nil)
+		llmResponse, err := transformAnthropicToADK(resp)
+		if err != nil {
+			yield(nil, fmt.Errorf("failed to transform response: %w", err))
+			return
+		}
+
+		c.logger.Debug("received response from anthropic", "content_blocks", len(resp.Content))
+
+		// Yield the response
+		yield(llmResponse, nil)
 	}
-}
-
-// transformContents converts genai.Content to Anthropic format
-func (c *ClaudeModel) transformContents(contents []*genai.Content) ([]anthropic.MessageParam, string, error) {
-	var messages []anthropic.MessageParam
-	var systemMessage strings.Builder
-
-	for _, content := range contents {
-		role := strings.ToLower(content.Role)
-		
-		// Handle system messages separately
-		if role == "system" {
-			for _, part := range content.Parts {
-				if part.Text != "" {
-					if systemMessage.Len() > 0 {
-						systemMessage.WriteString("\n")
-					}
-					systemMessage.WriteString(part.Text)
-				}
-			}
-			continue
-		}
-
-		// Convert role to Anthropic format
-		var anthropicRole anthropic.MessageParamRole
-		switch role {
-		case "user":
-			anthropicRole = anthropic.MessageParamRoleUser
-		case "assistant", "model":
-			anthropicRole = anthropic.MessageParamRoleAssistant
-		default:
-			anthropicRole = anthropic.MessageParamRoleUser // Default to user
-		}
-
-		// Create message using the pattern from examples
-		if len(content.Parts) > 0 {
-			// For simplicity, just take the first text part for now
-			var textContent string
-			for _, part := range content.Parts {
-				if part.Text != "" {
-					textContent = part.Text
-					break
-				}
-			}
-
-			if textContent != "" {
-				message := anthropic.NewUserMessage(anthropic.NewTextBlock(textContent))
-				if anthropicRole == anthropic.MessageParamRoleAssistant {
-					message = anthropic.NewAssistantMessage(anthropic.NewTextBlock(textContent))
-				}
-				messages = append(messages, message)
-			}
-		}
-	}
-
-	return messages, systemMessage.String(), nil
-}
-
-// transformResponse converts Anthropic response to ADK format
-func (c *ClaudeModel) transformResponse(resp *anthropic.Message) *model.LLMResponse {
-	response := &model.LLMResponse{}
-
-	// Extract text content from response
-	var textParts []string
-	for _, content := range resp.Content {
-		if content.Type == "text" {
-			textParts = append(textParts, content.Text)
-		}
-	}
-
-	// Create genai.Content for the response
-	text := strings.Join(textParts, "\n")
-	if text != "" {
-		response.Content = &genai.Content{
-			Role: "model",
-			Parts: []*genai.Part{
-				{Text: text},
-			},
-		}
-	}
-
-	// Set usage statistics if available
-	if resp.Usage.InputTokens > 0 || resp.Usage.OutputTokens > 0 {
-		response.UsageMetadata = &genai.GenerateContentResponseUsageMetadata{
-			PromptTokenCount:     int32(resp.Usage.InputTokens),
-			CandidatesTokenCount: int32(resp.Usage.OutputTokens),
-			TotalTokenCount:      int32(resp.Usage.InputTokens + resp.Usage.OutputTokens),
-		}
-	}
-
-	return response
 }

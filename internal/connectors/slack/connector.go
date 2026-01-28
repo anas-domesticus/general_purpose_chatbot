@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/bridge"
 	"github.com/slack-go/slack"
