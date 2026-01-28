@@ -75,8 +75,8 @@ func main() {
 
 	log.Info("Claude model created successfully")
 
-	// Create agent loader with Claude model
-	agentLoader := agents.NewLoader(claudeModel)
+	// Create agent loader with Claude model and MCP configuration
+	agentLoader := agents.NewLoader(claudeModel, cfg.MCP)
 
 	log.Info("Agent loader created successfully")
 

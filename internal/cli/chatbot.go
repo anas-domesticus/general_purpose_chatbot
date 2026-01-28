@@ -81,8 +81,8 @@ func chatbotStartAction(ctx *cli.Context) error {
 
 	log.Info("Claude model created successfully")
 
-	// Create agent loader with Claude model
-	agentLoader := agents.NewLoader(claudeModel)
+	// Create agent loader with Claude model and MCP configuration
+	agentLoader := agents.NewLoader(claudeModel, cfg.MCP)
 	log.Info("Agent loader created successfully")
 
 	// Configure the ADK launcher
@@ -139,8 +139,8 @@ func chatbotWebAction(ctx *cli.Context) error {
 		return fmt.Errorf("failed to create Claude model: %w", err)
 	}
 
-	// Create agent loader
-	agentLoader := agents.NewLoader(claudeModel)
+	// Create agent loader with MCP configuration
+	agentLoader := agents.NewLoader(claudeModel, cfg.MCP)
 
 	// Configure the ADK launcher
 	adkConfig := &launcher.Config{

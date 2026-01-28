@@ -1,0 +1,42 @@
+# Example docker-compose.yml showing external system.md mounting
+
+version: '3.8'
+
+services:
+  # ADK Server (Google Agent Development Kit)
+  adk-server:
+    image: google/adk:latest  # Replace with actual ADK image
+    ports:
+      - "8000:8000"
+    environment:
+      - ADK_LOG_LEVEL=info
+
+  # Chatbot service
+  chatbot:
+    build: .
+    depends_on:
+      - adk-server
+    environment:
+      # ADK configuration
+      - ADK_BASE_URL=http://adk-server:8000
+      - AGENT_NAME=slack_assistant
+      
+      # Slack configuration
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}  # Set in .env file
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}  # Set in .env file
+    
+    volumes:
+      # Option 1: Mount external system.md file
+      - ./custom-system.md:/app/system.md:ro
+      
+      # Option 2: Mount entire config directory
+      # - ./config:/app/config:ro
+    
+    restart: unless-stopped
+
+# Example usage:
+# 1. Create custom-system.md with your prompt
+# 2. Create .env with SLACK_BOT_TOKEN and SLACK_APP_TOKEN  
+# 3. Run: docker-compose up
+#
+# The chatbot will load your custom-system.md as its system prompt
