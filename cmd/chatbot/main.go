@@ -15,6 +15,8 @@ import (
 
 	"github.com/lewisedginton/general_purpose_chatbot/internal/agents"
 	appconfig "github.com/lewisedginton/general_purpose_chatbot/internal/config"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/executor"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/slack"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/middleware"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/models/anthropic"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/monitoring"
@@ -63,7 +65,6 @@ func main() {
 		Logger:          log,
 		AnthropicAPIURL: cfg.Anthropic.APIBaseURL,
 		DatabaseURL:     cfg.Database.URL,
-		RedisURL:        cfg.Redis.URL,
 	})
 
 	// Create Claude model instance
@@ -87,7 +88,7 @@ func main() {
 
 	// Set up HTTP middleware for web mode
 	if len(os.Args) > 1 && os.Args[1] == "web" {
-		setupWebServerWithMonitoring(ctx, adkConfig, healthMonitor, log, cfg)
+		setupWebServerWithMonitoring(ctx, adkConfig, healthMonitor, log, cfg, claudeModel)
 		return
 	}
 
@@ -99,7 +100,7 @@ func main() {
 
 	// Execute the launcher with command line arguments
 	if err := adkLauncher.Execute(ctx, adkConfig, os.Args[1:]); err != nil {
-		log.Error("ADK launcher failed", 
+		log.Error("ADK launcher failed",
 			logger.ErrorField(err),
 			logger.StringField("usage", adkLauncher.CommandLineSyntax()))
 		os.Exit(1)
@@ -116,10 +117,10 @@ func setupGracefulShutdown(cancel context.CancelFunc, log logger.Logger) {
 	go func() {
 		sig := <-sigChan
 		log.Info("Received shutdown signal", logger.StringField("signal", sig.String()))
-		
+
 		// Start graceful shutdown
 		cancel()
-		
+
 		// Give processes time to shutdown gracefully, then force exit
 		time.AfterFunc(30*time.Second, func() {
 			log.Warn("Force exiting due to timeout")
@@ -129,17 +130,17 @@ func setupGracefulShutdown(cancel context.CancelFunc, log logger.Logger) {
 }
 
 // setupWebServerWithMonitoring sets up the web server with monitoring endpoints
-func setupWebServerWithMonitoring(ctx context.Context, adkConfig *launcher.Config, healthMonitor *monitoring.HealthMonitor, log logger.Logger, cfg *appconfig.AppConfig) {
+func setupWebServerWithMonitoring(ctx context.Context, adkConfig *launcher.Config, healthMonitor *monitoring.HealthMonitor, log logger.Logger, cfg *appconfig.AppConfig, claudeModel *anthropic.ClaudeModel) {
 	// Create HTTP server with monitoring endpoints
 	mux := http.NewServeMux()
-	
+
 	// Register health check endpoints
 	healthMonitor.RegisterHandlers(mux)
-	
+
 	// Create recovery middleware configuration
 	recoveryConfig := middleware.DefaultRecoveryConfig()
 	recoveryConfig.Logger = log
-	
+
 	// Chain middleware: Recovery -> Request Logging -> Error Handling -> Timeout
 	handler := middleware.ChainMiddleware(
 		middleware.Recovery(recoveryConfig),
@@ -162,7 +163,7 @@ func setupWebServerWithMonitoring(ctx context.Context, adkConfig *launcher.Confi
 		log.Info("Starting HTTP server",
 			logger.IntField("port", cfg.Port),
 			logger.StringField("timeout", cfg.RequestTimeout.String()))
-		
+
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Error("HTTP server error", logger.ErrorField(err))
 		}
@@ -176,18 +177,46 @@ func setupWebServerWithMonitoring(ctx context.Context, adkConfig *launcher.Confi
 		}
 	}()
 
+	// Start Slack connector if configured
+	if cfg.Slack.Enabled() {
+		slackAgent, err := agents.NewSlackAgent(claudeModel, cfg.MCP)
+		if err != nil {
+			log.Error("Failed to create Slack agent", logger.ErrorField(err))
+		} else {
+			exec, err := executor.NewExecutor(slackAgent)
+			if err != nil {
+				log.Error("Failed to create executor", logger.ErrorField(err))
+			} else {
+				slackConnector, err := slack.NewConnector(slack.Config{
+					BotToken: cfg.Slack.BotToken,
+					AppToken: cfg.Slack.AppToken,
+				}, exec)
+				if err != nil {
+					log.Error("Failed to create Slack connector", logger.ErrorField(err))
+				} else {
+					go func() {
+						log.Info("Starting Slack connector")
+						if err := slackConnector.Start(ctx); err != nil {
+							log.Error("Slack connector error", logger.ErrorField(err))
+						}
+					}()
+				}
+			}
+		}
+	}
+
 	// Wait for shutdown signal
 	<-ctx.Done()
-	
+
 	log.Info("Shutting down HTTP server")
-	
+
 	// Mark service as not ready
 	healthMonitor.ShutdownCheck()
-	
+
 	// Shutdown server gracefully
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()
-	
+
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Error("HTTP server shutdown error", logger.ErrorField(err))
 	} else {

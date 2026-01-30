@@ -23,7 +23,6 @@ type Config struct {
 	Logger          logger.Logger
 	AnthropicAPIURL string // URL for Anthropic API health check
 	DatabaseURL     string // Optional: Database connection string for health check
-	RedisURL        string // Optional: Redis connection string for health check
 }
 
 // NewHealthMonitor creates a new health monitor with configured checks
@@ -41,7 +40,7 @@ func NewHealthMonitor(cfg Config) *HealthMonitor {
 	}))
 
 	// Add readiness checks
-	
+
 	// Anthropic API health check
 	if cfg.AnthropicAPIURL != "" {
 		anthropicChecker := checkers.NewHTTPChecker(cfg.AnthropicAPIURL, "anthropic_api")
@@ -53,16 +52,6 @@ func NewHealthMonitor(cfg Config) *HealthMonitor {
 		// For now, just add a placeholder - this would need actual DB connection
 		checker.AddReadinessCheck(health.NewCheckFunc("database", func(ctx context.Context) error {
 			// TODO: Implement actual database ping
-			return nil
-		}))
-	}
-
-	// Redis health check (if configured)
-	if cfg.RedisURL != "" {
-		// Note: Redis health check would require creating a Redis client
-		// For now, add a placeholder that can be implemented when Redis is needed
-		checker.AddReadinessCheck(health.NewCheckFunc("redis", func(ctx context.Context) error {
-			// TODO: Implement actual Redis health check when Redis client is configured
 			return nil
 		}))
 	}
@@ -79,18 +68,18 @@ func NewHealthMonitor(cfg Config) *HealthMonitor {
 func (hm *HealthMonitor) LivenessHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		
+
 		status, err := hm.checker.CheckLiveness(ctx)
-		
+
 		response := map[string]interface{}{
-			"status": "healthy",
+			"status":    "healthy",
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
-			"uptime": time.Since(hm.startTime).String(),
-			"checks": status.Checks,
+			"uptime":    time.Since(hm.startTime).String(),
+			"checks":    status.Checks,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		
+
 		if err != nil {
 			response["status"] = "unhealthy"
 			response["error"] = err.Error()
@@ -109,17 +98,17 @@ func (hm *HealthMonitor) LivenessHandler() http.HandlerFunc {
 func (hm *HealthMonitor) ReadinessHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		
+
 		status, err := hm.checker.CheckReadiness(ctx)
-		
+
 		response := map[string]interface{}{
-			"status": "ready",
+			"status":    "ready",
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
-			"checks": status.Checks,
+			"checks":    status.Checks,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		
+
 		if err != nil {
 			response["status"] = "not_ready"
 			response["error"] = err.Error()
@@ -138,15 +127,15 @@ func (hm *HealthMonitor) ReadinessHandler() http.HandlerFunc {
 func (hm *HealthMonitor) HealthHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		
+
 		livenessStatus, livenessErr := hm.checker.CheckLiveness(ctx)
 		readinessStatus, readinessErr := hm.checker.CheckReadiness(ctx)
-		
+
 		response := map[string]interface{}{
-			"status": "healthy",
+			"status":    "healthy",
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
-			"uptime": time.Since(hm.startTime).String(),
-			"version": getVersion(),
+			"uptime":    time.Since(hm.startTime).String(),
+			"version":   getVersion(),
 			"liveness": map[string]interface{}{
 				"status": "healthy",
 				"checks": livenessStatus.Checks,
@@ -158,16 +147,16 @@ func (hm *HealthMonitor) HealthHandler() http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		
+
 		// Determine overall status
 		overallHealthy := true
-		
+
 		if livenessErr != nil {
 			response["liveness"].(map[string]interface{})["status"] = "unhealthy"
 			response["liveness"].(map[string]interface{})["error"] = livenessErr.Error()
 			overallHealthy = false
 		}
-		
+
 		if readinessErr != nil {
 			response["readiness"].(map[string]interface{})["status"] = "not_ready"
 			response["readiness"].(map[string]interface{})["error"] = readinessErr.Error()

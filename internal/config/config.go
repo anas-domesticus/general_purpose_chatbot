@@ -33,14 +33,25 @@ type AppConfig struct {
 	// Database configuration (optional)
 	Database DatabaseConfig `yaml:"database,inline"`
 
-	// Redis configuration (optional)
-	Redis RedisConfig `yaml:"redis,inline"`
-
 	// Security configuration
 	Security SecurityConfig `yaml:"security,inline"`
 
 	// MCP (Model Context Protocol) configuration
 	MCP MCPConfig `yaml:"mcp,inline"`
+
+	// Slack configuration
+	Slack SlackConfig `yaml:"slack,inline"`
+}
+
+// SlackConfig holds Slack-specific configuration
+type SlackConfig struct {
+	BotToken string `env:"SLACK_BOT_TOKEN" yaml:"bot_token"`
+	AppToken string `env:"SLACK_APP_TOKEN" yaml:"app_token"`
+}
+
+// Enabled returns true if Slack is configured with both tokens
+func (c *SlackConfig) Enabled() bool {
+	return c.BotToken != "" && c.AppToken != ""
 }
 
 // AnthropicConfig holds Anthropic-specific configuration
@@ -75,14 +86,6 @@ type DatabaseConfig struct {
 	ConnMaxIdleTime time.Duration `env:"DATABASE_CONN_MAX_IDLE_TIME" yaml:"conn_max_idle_time" default:"5m"`
 }
 
-// RedisConfig holds Redis configuration
-type RedisConfig struct {
-	URL      string        `env:"REDIS_URL" yaml:"url"`
-	Password string        `env:"REDIS_PASSWORD" yaml:"password"`
-	Database int           `env:"REDIS_DATABASE" yaml:"database" default:"0"`
-	Timeout  time.Duration `env:"REDIS_TIMEOUT" yaml:"timeout" default:"5s"`
-}
-
 // SecurityConfig holds security-related configuration
 type SecurityConfig struct {
 	CORSAllowedOrigins []string `env:"CORS_ALLOWED_ORIGINS" yaml:"cors_allowed_origins" default:"http://localhost:3000,http://localhost:8080"`
@@ -93,10 +96,10 @@ type SecurityConfig struct {
 
 // MCPConfig holds Model Context Protocol configuration
 type MCPConfig struct {
-	Enabled     bool                         `env:"MCP_ENABLED" yaml:"enabled" default:"false"`
-	Servers     map[string]MCPServerConfig   `yaml:"servers"`
-	Discovery   MCPDiscoveryConfig           `yaml:"discovery"`
-	Timeout     time.Duration                `env:"MCP_TIMEOUT" yaml:"timeout" default:"30s"`
+	Enabled   bool                       `env:"MCP_ENABLED" yaml:"enabled" default:"false"`
+	Servers   map[string]MCPServerConfig `yaml:"servers"`
+	Discovery MCPDiscoveryConfig         `yaml:"discovery"`
+	Timeout   time.Duration              `env:"MCP_TIMEOUT" yaml:"timeout" default:"30s"`
 }
 
 // MCPServerConfig holds configuration for individual MCP servers
@@ -115,7 +118,7 @@ type MCPServerConfig struct {
 
 // MCPAuthConfig holds authentication configuration for MCP servers
 type MCPAuthConfig struct {
-	Type   string `yaml:"type"`   // bearer, basic, api_key
+	Type   string `yaml:"type"` // bearer, basic, api_key
 	Token  string `yaml:"token,omitempty"`
 	User   string `yaml:"user,omitempty"`
 	Pass   string `yaml:"pass,omitempty"`
@@ -332,7 +335,6 @@ func (c *AppConfig) LogConfig(log logger.Logger) {
 		logger.StringField("log_format", c.Logging.Format),
 		logger.BoolField("metrics_enabled", c.Monitoring.MetricsEnabled),
 		logger.BoolField("database_configured", c.Database.URL != ""),
-		logger.BoolField("redis_configured", c.Redis.URL != ""),
 		logger.BoolField("rate_limit_enabled", c.Security.RateLimitEnabled),
 		logger.IntField("rate_limit_rps", c.Security.RateLimitRPS),
 		logger.BoolField("mcp_enabled", c.MCP.Enabled),
@@ -342,5 +344,10 @@ func (c *AppConfig) LogConfig(log logger.Logger) {
 	// Log MCP server details if enabled
 	if c.MCP.Enabled && len(mcpServerNames) > 0 {
 		log.Info("MCP servers configured", logger.StringField("servers", strings.Join(mcpServerNames, ", ")))
+	}
+
+	// Log Slack configuration
+	if c.Slack.Enabled() {
+		log.Info("Slack integration enabled")
 	}
 }

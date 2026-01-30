@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/bridge"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/executor"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
@@ -17,31 +17,26 @@ import (
 type Connector struct {
 	client     *slack.Client
 	socketMode *socketmode.Client
-	bridge     *bridge.Bridge
+	executor   *executor.Executor
 	logger     *log.Logger
 }
 
 // Config holds configuration for the Slack connector
 type Config struct {
-	BotToken    string // xoxb-*
-	AppToken    string // xapp-*
-	ADKBaseURL  string // ADK server URL, e.g., http://localhost:8000
-	AgentName   string // ADK agent name to route messages to
+	BotToken string // xoxb-*
+	AppToken string // xapp-*
 }
 
-// NewConnector creates a new Slack connector
-func NewConnector(config Config) (*Connector, error) {
+// NewConnector creates a new Slack connector with in-process executor
+func NewConnector(config Config, exec *executor.Executor) (*Connector, error) {
 	if !strings.HasPrefix(config.BotToken, "xoxb-") {
 		return nil, fmt.Errorf("invalid bot token format, expected xoxb-*")
 	}
 	if !strings.HasPrefix(config.AppToken, "xapp-") {
 		return nil, fmt.Errorf("invalid app token format, expected xapp-*")
 	}
-	if config.ADKBaseURL == "" {
-		return nil, fmt.Errorf("ADK base URL is required")
-	}
-	if config.AgentName == "" {
-		return nil, fmt.Errorf("agent name is required")
+	if exec == nil {
+		return nil, fmt.Errorf("executor is required")
 	}
 
 	// Initialize Slack clients
@@ -51,15 +46,12 @@ func NewConnector(config Config) (*Connector, error) {
 	)
 	socketMode := socketmode.New(client)
 
-	// Initialize ADK bridge
-	adkBridge := bridge.NewBridge(config.ADKBaseURL, config.AgentName)
-
 	logger := log.New(os.Stdout, "[SLACK-CONNECTOR] ", log.LstdFlags|log.Lshortfile)
 
 	return &Connector{
 		client:     client,
 		socketMode: socketMode,
-		bridge:     adkBridge,
+		executor:   exec,
 		logger:     logger,
 	}, nil
 }
@@ -116,7 +108,7 @@ func (c *Connector) Start(ctx context.Context) error {
 	return c.socketMode.RunContext(ctx)
 }
 
-// handleEvent processes Slack events and routes them to ADK agents
+// handleEvent processes Slack events and routes them to the agent
 func (c *Connector) handleEvent(ctx context.Context, event slackevents.EventsAPIEvent) error {
 	switch event.Type {
 	case slackevents.CallbackEvent:
@@ -138,14 +130,6 @@ func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.M
 		return nil
 	}
 
-	// Skip messages from the bot itself
-	if event.BotID != "" {
-		botInfo, err := c.client.GetBotInfo(slack.GetBotInfoParameters{Bot: event.BotID})
-		if err == nil && botInfo.UserID == event.User {
-			return nil
-		}
-	}
-
 	// Only process direct messages (DMs have channel type starting with D)
 	if !strings.HasPrefix(event.Channel, "D") {
 		return nil
@@ -153,17 +137,15 @@ func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.M
 
 	c.logger.Printf("Processing DM from user %s: %s", event.User, event.Text)
 
-	// Send message to ADK agent via bridge
-	response, err := c.bridge.SendMessage(ctx, bridge.MessageRequest{
+	// Send message to agent via executor
+	response, err := c.executor.Execute(ctx, executor.MessageRequest{
 		UserID:    event.User,
 		SessionID: fmt.Sprintf("slack_%s_%s", event.User, event.Channel),
 		Message:   event.Text,
-		Channel:   event.Channel,
-		Timestamp: event.TimeStamp,
 	})
 
 	if err != nil {
-		c.logger.Printf("Error from ADK bridge: %v", err)
+		c.logger.Printf("Error from executor: %v", err)
 		// Send error message to user
 		_, _, err = c.client.PostMessage(event.Channel, slack.MsgOptionText("Sorry, I encountered an error processing your message.", false))
 		return err
@@ -188,17 +170,15 @@ func (c *Connector) handleAppMentionEvent(ctx context.Context, event *slackevent
 	// Remove the bot mention from the message text
 	cleanText := c.removeBotMention(event.Text)
 
-	// Send message to ADK agent via bridge
-	response, err := c.bridge.SendMessage(ctx, bridge.MessageRequest{
+	// Send message to agent via executor
+	response, err := c.executor.Execute(ctx, executor.MessageRequest{
 		UserID:    event.User,
 		SessionID: fmt.Sprintf("slack_%s_%s", event.User, event.Channel),
 		Message:   cleanText,
-		Channel:   event.Channel,
-		Timestamp: event.TimeStamp,
 	})
 
 	if err != nil {
-		c.logger.Printf("Error from ADK bridge: %v", err)
+		c.logger.Printf("Error from executor: %v", err)
 		// Send error message to channel
 		_, _, err = c.client.PostMessage(event.Channel, slack.MsgOptionText("Sorry, I encountered an error processing your message.", false))
 		return err
@@ -236,7 +216,7 @@ func (c *Connector) removeBotMention(text string) string {
 // Stop gracefully stops the connector
 func (c *Connector) Stop() error {
 	c.logger.Println("Stopping Slack connector...")
-	// socketmode client doesn't have a direct stop method, 
+	// socketmode client doesn't have a direct stop method,
 	// stopping is handled by context cancellation in RunContext
 	return nil
 }
@@ -247,6 +227,6 @@ func (c *Connector) GetBotInfo() (*slack.Bot, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return c.client.GetBotInfo(slack.GetBotInfoParameters{Bot: auth.BotID})
 }

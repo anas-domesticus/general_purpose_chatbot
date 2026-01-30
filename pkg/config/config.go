@@ -6,10 +6,13 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/go-multierror"
 	"gopkg.in/yaml.v3"
 )
+
+var durationType = reflect.TypeOf(time.Duration(0))
 
 // Validator interface allows config structs to implement custom validation logic.
 // If a config struct implements this interface, validation will be automatically
@@ -48,15 +51,25 @@ func processFields(val reflect.Value, typeOfT reflect.Type) (map[string]bool, er
 				setFields[fieldKey] = true
 
 				// Set the value to the field based on its type
+				// Check for time.Duration first (it's an int64 underneath)
+				if field.Type() == durationType {
+					duration, err := time.ParseDuration(envVal)
+					if err != nil {
+						return nil, fmt.Errorf("failed to convert %s to duration: %v", envVal, err)
+					}
+					field.SetInt(int64(duration))
+					continue
+				}
+
 				switch field.Kind() {
 				case reflect.String:
 					field.SetString(envVal)
-				case reflect.Int:
-					intVal, err := strconv.Atoi(envVal)
+				case reflect.Int, reflect.Int64:
+					intVal, err := strconv.ParseInt(envVal, 10, 64)
 					if err != nil {
 						return nil, fmt.Errorf("failed to convert %s to int: %v", envVal, err)
 					}
-					field.SetInt(int64(intVal))
+					field.SetInt(intVal)
 				case reflect.Float64:
 					floatVal, err := strconv.ParseFloat(envVal, 64)
 					if err != nil {
@@ -128,15 +141,26 @@ func checkRequiredAndDefaults(val reflect.Value, typeOfT reflect.Type, setFields
 			// Only apply defaults if the field wasn't explicitly set from environment
 			fieldKey := typeOfT.Name() + "." + fieldType.Name
 			if field.IsZero() && defaultTag != "" && !setFields[fieldKey] {
+				// Check for time.Duration first (it's an int64 underneath)
+				if field.Type() == durationType {
+					duration, err := time.ParseDuration(defaultTag)
+					if err != nil {
+						result = multierror.Append(result, fmt.Errorf("failed to convert %s to duration: %v", defaultTag, err))
+					} else {
+						field.SetInt(int64(duration))
+					}
+					continue
+				}
+
 				switch field.Kind() {
 				case reflect.String:
 					field.SetString(defaultTag)
-				case reflect.Int:
-					intVal, err := strconv.Atoi(defaultTag)
+				case reflect.Int, reflect.Int64:
+					intVal, err := strconv.ParseInt(defaultTag, 10, 64)
 					if err != nil {
 						result = multierror.Append(result, fmt.Errorf("failed to convert %s to int: %v", defaultTag, err))
 					}
-					field.SetInt(int64(intVal))
+					field.SetInt(intVal)
 				case reflect.Float64:
 					floatVal, err := strconv.ParseFloat(defaultTag, 64)
 					if err != nil {
@@ -155,6 +179,18 @@ func checkRequiredAndDefaults(val reflect.Value, typeOfT reflect.Type, setFields
 						result = multierror.Append(result, fmt.Errorf("failed to convert %s to bool: %v", defaultTag, err))
 					}
 					field.SetBool(boolVal)
+				case reflect.Slice:
+					// Handle string slices (comma-separated values)
+					if field.Type().Elem().Kind() == reflect.String {
+						values := strings.Split(defaultTag, ",")
+						slice := reflect.MakeSlice(field.Type(), len(values), len(values))
+						for i, v := range values {
+							slice.Index(i).SetString(strings.TrimSpace(v))
+						}
+						field.Set(slice)
+					} else {
+						result = multierror.Append(result, fmt.Errorf("unsupported slice type %s for default", field.Type()))
+					}
 				default:
 					result = multierror.Append(result, fmt.Errorf("unsupported kind %s", field.Kind()))
 				}
