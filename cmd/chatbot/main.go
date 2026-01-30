@@ -3,29 +3,22 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
-
-	"google.golang.org/adk/cmd/launcher"
-	"google.golang.org/adk/cmd/launcher/full"
 
 	"github.com/lewisedginton/general_purpose_chatbot/internal/agents"
 	appconfig "github.com/lewisedginton/general_purpose_chatbot/internal/config"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/executor"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/slack"
-	"github.com/lewisedginton/general_purpose_chatbot/internal/middleware"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/models/anthropic"
-	"github.com/lewisedginton/general_purpose_chatbot/internal/monitoring"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/config"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
 
 func main() {
-	// Load configuration using standardized pattern
+	// Load configuration
 	cfg := &appconfig.AppConfig{}
 	if err := config.GetConfigFromEnvVars(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load configuration: %v\n", err)
@@ -39,33 +32,17 @@ func main() {
 		Service: cfg.ServiceName,
 	})
 
-	// Log configuration (without sensitive data)
 	cfg.LogConfig(log)
 
-	log.Info("Starting General Purpose Chatbot",
+	log.Info("Starting Slack Chatbot",
 		logger.StringField("version", cfg.Version),
-		logger.StringField("claude_model", cfg.Anthropic.Model),
-		logger.StringField("service_name", cfg.ServiceName))
+		logger.StringField("claude_model", cfg.Anthropic.Model))
 
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Handle special health check command for Docker healthcheck
-	if len(os.Args) > 1 && os.Args[1] == "health" {
-		performHealthCheck(cfg.Port, log)
-		return
-	}
-
-	// Set up graceful shutdown
 	setupGracefulShutdown(cancel, log)
-
-	// Initialize monitoring
-	healthMonitor := monitoring.NewHealthMonitor(monitoring.Config{
-		Logger:          log,
-		AnthropicAPIURL: cfg.Anthropic.APIBaseURL,
-		DatabaseURL:     cfg.Database.URL,
-	})
 
 	// Create Claude model instance
 	claudeModel, err := anthropic.NewClaudeModel(cfg.Anthropic.APIKey, cfg.Anthropic.Model)
@@ -74,39 +51,42 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Info("Claude model created successfully")
-
-	// Create agent loader with Claude model and MCP configuration
-	agentLoader := agents.NewLoader(claudeModel, cfg.MCP)
-
-	log.Info("Agent loader created successfully")
-
-	// Configure the ADK launcher with enhanced middleware
-	adkConfig := &launcher.Config{
-		AgentLoader: agentLoader,
-	}
-
-	// Set up HTTP middleware for web mode
-	if len(os.Args) > 1 && os.Args[1] == "web" {
-		setupWebServerWithMonitoring(ctx, adkConfig, healthMonitor, log, cfg, claudeModel)
-		return
-	}
-
-	// Create and execute the ADK launcher
-	adkLauncher := full.NewLauncher()
-
-	log.Info("Starting ADK launcher",
-		logger.StringField("mode", strings.Join(os.Args[1:], " ")))
-
-	// Execute the launcher with command line arguments
-	if err := adkLauncher.Execute(ctx, adkConfig, os.Args[1:]); err != nil {
-		log.Error("ADK launcher failed",
-			logger.ErrorField(err),
-			logger.StringField("usage", adkLauncher.CommandLineSyntax()))
+	// Verify Slack is configured
+	if !cfg.Slack.Enabled() {
+		log.Error("Slack is not configured. Set SLACK_BOT_TOKEN and SLACK_APP_TOKEN environment variables.")
 		os.Exit(1)
 	}
 
-	log.Info("ADK launcher completed successfully")
+	// Create Slack agent
+	slackAgent, err := agents.NewSlackAgent(claudeModel, cfg.MCP)
+	if err != nil {
+		log.Error("Failed to create Slack agent", logger.ErrorField(err))
+		os.Exit(1)
+	}
+
+	// Create executor
+	exec, err := executor.NewExecutor(slackAgent)
+	if err != nil {
+		log.Error("Failed to create executor", logger.ErrorField(err))
+		os.Exit(1)
+	}
+
+	// Create Slack connector
+	slackConnector, err := slack.NewConnector(slack.Config{
+		BotToken: cfg.Slack.BotToken,
+		AppToken: cfg.Slack.AppToken,
+	}, exec)
+	if err != nil {
+		log.Error("Failed to create Slack connector", logger.ErrorField(err))
+		os.Exit(1)
+	}
+
+	// Start Slack connector
+	log.Info("Starting Slack connector")
+	if err := slackConnector.Start(ctx); err != nil {
+		log.Error("Slack connector error", logger.ErrorField(err))
+		os.Exit(1)
+	}
 }
 
 // setupGracefulShutdown sets up signal handling for graceful shutdown
@@ -127,120 +107,4 @@ func setupGracefulShutdown(cancel context.CancelFunc, log logger.Logger) {
 			os.Exit(1)
 		})
 	}()
-}
-
-// setupWebServerWithMonitoring sets up the web server with monitoring endpoints
-func setupWebServerWithMonitoring(ctx context.Context, adkConfig *launcher.Config, healthMonitor *monitoring.HealthMonitor, log logger.Logger, cfg *appconfig.AppConfig, claudeModel *anthropic.ClaudeModel) {
-	// Create HTTP server with monitoring endpoints
-	mux := http.NewServeMux()
-
-	// Register health check endpoints
-	healthMonitor.RegisterHandlers(mux)
-
-	// Create recovery middleware configuration
-	recoveryConfig := middleware.DefaultRecoveryConfig()
-	recoveryConfig.Logger = log
-
-	// Chain middleware: Recovery -> Request Logging -> Error Handling -> Timeout
-	handler := middleware.ChainMiddleware(
-		middleware.Recovery(recoveryConfig),
-		middleware.RequestLogging(log),
-		middleware.ErrorHandler(recoveryConfig),
-		middleware.TimeoutHandler(cfg.RequestTimeout, recoveryConfig),
-	)(mux)
-
-	// Create HTTP server
-	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", cfg.Port),
-		Handler:      handler,
-		ReadTimeout:  cfg.RequestTimeout,
-		WriteTimeout: cfg.RequestTimeout,
-		IdleTimeout:  cfg.IdleTimeout,
-	}
-
-	// Start server in goroutine
-	go func() {
-		log.Info("Starting HTTP server",
-			logger.IntField("port", cfg.Port),
-			logger.StringField("timeout", cfg.RequestTimeout.String()))
-
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Error("HTTP server error", logger.ErrorField(err))
-		}
-	}()
-
-	// Start ADK launcher in goroutine
-	go func() {
-		adkLauncher := full.NewLauncher()
-		if err := adkLauncher.Execute(ctx, adkConfig, []string{"web"}); err != nil {
-			log.Error("ADK launcher failed in web mode", logger.ErrorField(err))
-		}
-	}()
-
-	// Start Slack connector if configured
-	if cfg.Slack.Enabled() {
-		slackAgent, err := agents.NewSlackAgent(claudeModel, cfg.MCP)
-		if err != nil {
-			log.Error("Failed to create Slack agent", logger.ErrorField(err))
-		} else {
-			exec, err := executor.NewExecutor(slackAgent)
-			if err != nil {
-				log.Error("Failed to create executor", logger.ErrorField(err))
-			} else {
-				slackConnector, err := slack.NewConnector(slack.Config{
-					BotToken: cfg.Slack.BotToken,
-					AppToken: cfg.Slack.AppToken,
-				}, exec)
-				if err != nil {
-					log.Error("Failed to create Slack connector", logger.ErrorField(err))
-				} else {
-					go func() {
-						log.Info("Starting Slack connector")
-						if err := slackConnector.Start(ctx); err != nil {
-							log.Error("Slack connector error", logger.ErrorField(err))
-						}
-					}()
-				}
-			}
-		}
-	}
-
-	// Wait for shutdown signal
-	<-ctx.Done()
-
-	log.Info("Shutting down HTTP server")
-
-	// Mark service as not ready
-	healthMonitor.ShutdownCheck()
-
-	// Shutdown server gracefully
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer shutdownCancel()
-
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Error("HTTP server shutdown error", logger.ErrorField(err))
-	} else {
-		log.Info("HTTP server shutdown completed")
-	}
-}
-
-// performHealthCheck performs a health check for Docker healthcheck
-func performHealthCheck(port int, log logger.Logger) {
-	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/health/live", port))
-	if err != nil {
-		log.Error("Health check failed", logger.ErrorField(err))
-		fmt.Fprintf(os.Stderr, "Health check failed: %v\n", err)
-		os.Exit(1)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		log.Error("Health check failed with status", logger.IntField("status_code", resp.StatusCode))
-		fmt.Fprintf(os.Stderr, "Health check failed with status: %d\n", resp.StatusCode)
-		os.Exit(1)
-	}
-
-	log.Info("Health check passed")
-	fmt.Println("Health check passed")
 }

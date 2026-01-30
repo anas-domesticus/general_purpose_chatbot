@@ -73,6 +73,9 @@ func (c *Connector) Start(ctx context.Context) error {
 			case socketmode.EventTypeConnected:
 				c.logger.Println("Connected to Slack with Socket Mode")
 
+			case socketmode.EventTypeHello:
+				// Hello event confirms WebSocket connection - no action needed
+
 			case socketmode.EventTypeEventsAPI:
 				eventsAPIEvent, ok := envelope.Data.(slackevents.EventsAPIEvent)
 				if !ok {
