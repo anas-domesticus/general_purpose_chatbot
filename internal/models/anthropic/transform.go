@@ -1,6 +1,7 @@
 package anthropic
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -209,18 +210,39 @@ func transformAnthropicToADK(message *anthropic.Message) (*model.LLMResponse, er
 
 // convertContentBlockToPart converts Anthropic ContentBlockUnion to genai.Part
 func convertContentBlockToPart(block anthropic.ContentBlockUnion) (*genai.Part, error) {
-	// For now, we'll handle the most common case - text blocks
-	// In a full implementation, you would handle all block types
-	if block.Type == "text" {
+	switch block.Type {
+	case "text":
 		return &genai.Part{
 			Text: block.Text,
 		}, nil
-	}
 
-	// For other types, convert to text representation
-	return &genai.Part{
-		Text: fmt.Sprintf("[%s content]", block.Type),
-	}, nil
+	case "thinking":
+		// Preserve Claude's extended thinking/reasoning in a structured format
+		return &genai.Part{
+			Text: fmt.Sprintf("<thinking>\n%s\n</thinking>", block.Thinking),
+		}, nil
+
+	case "tool_use":
+		// Convert tool use to function call
+		var args map[string]any
+		if len(block.Input) > 0 {
+			if err := json.Unmarshal(block.Input, &args); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal tool input: %w", err)
+			}
+		}
+		return &genai.Part{
+			FunctionCall: &genai.FunctionCall{
+				Name: block.Name,
+				Args: args,
+			},
+		}, nil
+
+	default:
+		// For unrecognized types, preserve with type annotation
+		return &genai.Part{
+			Text: fmt.Sprintf("[%s content]", block.Type),
+		}, nil
+	}
 }
 
 // transformToolsToAnthropic converts ADK tools to Anthropic tool format

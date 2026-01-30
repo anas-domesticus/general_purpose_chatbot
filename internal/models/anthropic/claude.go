@@ -24,6 +24,8 @@ type ClaudeModel struct {
 	structLogger   logger.Logger
 	retryConfig    RetryConfig
 	circuitBreaker *CircuitBreaker
+	enableThinking bool
+	thinkingBudget int64
 }
 
 // RetryConfig holds configuration for retry logic
@@ -80,6 +82,8 @@ type ClaudeConfig struct {
 	Logger         logger.Logger
 	RetryConfig    *RetryConfig
 	CircuitBreaker *CircuitBreaker
+	EnableThinking bool  // Enable extended thinking/reasoning
+	ThinkingBudget int64 // Token budget for thinking (0 = model default)
 }
 
 // NewClaudeModelWithConfig creates a new Claude model instance with full configuration
@@ -116,6 +120,8 @@ func NewClaudeModelWithConfig(apiKey, modelName string, config ClaudeConfig, opt
 		structLogger:   config.Logger,
 		retryConfig:    retryConfig,
 		circuitBreaker: circuitBreaker,
+		enableThinking: config.EnableThinking,
+		thinkingBudget: config.ThinkingBudget,
 	}
 
 	// Log initialization
@@ -162,6 +168,18 @@ func (c *ClaudeModel) generateContentNonStream(ctx context.Context, req *model.L
 			return
 		}
 
+		// Extract SystemInstruction from Config (ADK's way of passing agent instructions)
+		if req.Config != nil && req.Config.SystemInstruction != nil {
+			for _, part := range req.Config.SystemInstruction.Parts {
+				if part.Text != "" {
+					if systemPrompt != "" {
+						systemPrompt += "\n\n"
+					}
+					systemPrompt += part.Text
+				}
+			}
+		}
+
 		// Build Anthropic request
 		anthropicReq := anthropic.MessageNewParams{
 			Model:     anthropic.Model(c.modelName),
@@ -198,6 +216,15 @@ func (c *ClaudeModel) generateContentNonStream(ctx context.Context, req *model.L
 				return
 			}
 			anthropicReq.Tools = tools
+		}
+
+		// Add extended thinking configuration if enabled
+		if c.enableThinking {
+			budget := c.thinkingBudget
+			if budget == 0 {
+				budget = 10000 // Default thinking budget
+			}
+			anthropicReq.Thinking = anthropic.ThinkingConfigParamOfEnabled(budget)
 		}
 
 		// Execute request with retry logic
