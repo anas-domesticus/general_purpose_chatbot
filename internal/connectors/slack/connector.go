@@ -43,8 +43,9 @@ func NewConnector(config Config, exec *executor.Executor) (*Connector, error) {
 	client := slack.New(
 		config.BotToken,
 		slack.OptionAppLevelToken(config.AppToken),
+		slack.OptionDebug(true),
 	)
-	socketMode := socketmode.New(client)
+	socketMode := socketmode.New(client, socketmode.OptionDebug(true))
 
 	logger := log.New(os.Stdout, "[SLACK-CONNECTOR] ", log.LstdFlags|log.Lshortfile)
 

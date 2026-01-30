@@ -169,7 +169,7 @@ func transformAnthropicToADK(message *anthropic.Message) (*model.LLMResponse, er
 
 	// Create genai.Content
 	content := &genai.Content{
-		Role:  "assistant", // Anthropic responses are always from the assistant
+		Role:  "model", // ADK expects "model" for assistant responses
 		Parts: parts,
 	}
 

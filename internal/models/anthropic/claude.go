@@ -18,11 +18,11 @@ import (
 
 // ClaudeModel implements the model.LLM interface for Anthropic Claude models
 type ClaudeModel struct {
-	client        anthropic.Client
-	modelName     string
-	logger        *slog.Logger
-	structLogger  logger.Logger
-	retryConfig   RetryConfig
+	client         anthropic.Client
+	modelName      string
+	logger         *slog.Logger
+	structLogger   logger.Logger
+	retryConfig    RetryConfig
 	circuitBreaker *CircuitBreaker
 }
 
@@ -50,7 +50,7 @@ type CircuitBreaker struct {
 	failureThreshold int
 	resetTimeout     time.Duration
 	lastFailureTime  time.Time
-	state           CircuitState
+	state            CircuitState
 }
 
 type CircuitState int
@@ -66,7 +66,7 @@ func NewCircuitBreaker(failureThreshold int, resetTimeout time.Duration) *Circui
 	return &CircuitBreaker{
 		failureThreshold: failureThreshold,
 		resetTimeout:     resetTimeout,
-		state:           CircuitClosed,
+		state:            CircuitClosed,
 	}
 }
 
@@ -138,7 +138,8 @@ func (c *ClaudeModel) Name() string {
 func (c *ClaudeModel) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
 	c.logger.Info("generating content", "stream", stream, "contents_count", len(req.Contents))
 
-	// For now, implement non-streaming only to get basic functionality working
+	// For now,
+	//implement non-streaming only to get basic functionality working
 	// We'll add streaming support later
 	return c.generateContentNonStream(ctx, req)
 }
@@ -203,7 +204,7 @@ func (c *ClaudeModel) generateContentNonStream(ctx context.Context, req *model.L
 		resp, err := c.executeWithRetry(ctx, anthropicReq)
 		if err != nil {
 			c.recordFailure()
-			c.logError("claude api request failed after retries", err, 
+			c.logError("claude api request failed after retries", err,
 				logger.IntField("max_retries", c.retryConfig.MaxRetries))
 			yield(nil, fmt.Errorf("claude api error after retries: %w", err))
 			return
@@ -220,7 +221,7 @@ func (c *ClaudeModel) generateContentNonStream(ctx context.Context, req *model.L
 			return
 		}
 
-		c.logSuccess("generation completed successfully", 
+		c.logSuccess("generation completed successfully",
 			logger.IntField("content_blocks", len(resp.Content)),
 			logger.IntField("input_tokens", int(resp.Usage.InputTokens)),
 			logger.IntField("output_tokens", int(resp.Usage.OutputTokens)))
@@ -241,8 +242,8 @@ func (c *ClaudeModel) executeWithRetry(ctx context.Context, req anthropic.Messag
 			return nil, ctx.Err()
 		}
 
-		c.logger.Debug("attempting anthropic api call", 
-			"attempt", attempt+1, 
+		c.logger.Debug("attempting anthropic api call",
+			"attempt", attempt+1,
 			"max_attempts", c.retryConfig.MaxRetries+1)
 
 		// Make the API call
@@ -255,7 +256,7 @@ func (c *ClaudeModel) executeWithRetry(ctx context.Context, req anthropic.Messag
 
 		// Check if we should retry based on error type
 		if !c.shouldRetry(err) {
-			c.logError("non-retryable error encountered", err, 
+			c.logError("non-retryable error encountered", err,
 				logger.IntField("attempt", attempt+1))
 			return nil, err
 		}
@@ -265,7 +266,7 @@ func (c *ClaudeModel) executeWithRetry(ctx context.Context, req anthropic.Messag
 			break
 		}
 
-		c.logWarn("anthropic api call failed, retrying", 
+		c.logWarn("anthropic api call failed, retrying",
 			logger.ErrorField(err),
 			logger.IntField("attempt", attempt+1),
 			logger.DurationField("backoff", backoff))
@@ -296,19 +297,19 @@ func (c *ClaudeModel) shouldRetry(err error) bool {
 	errMsg := err.Error()
 
 	// Retry on network/temporary errors
-	if strings.Contains(errMsg, "connection") || 
-	   strings.Contains(errMsg, "timeout") || 
-	   strings.Contains(errMsg, "temporary") ||
-	   strings.Contains(errMsg, "rate limit") {
+	if strings.Contains(errMsg, "connection") ||
+		strings.Contains(errMsg, "timeout") ||
+		strings.Contains(errMsg, "temporary") ||
+		strings.Contains(errMsg, "rate limit") {
 		return true
 	}
 
 	// Check for specific HTTP status codes that should be retried
 	if strings.Contains(errMsg, "500") || // Internal Server Error
-	   strings.Contains(errMsg, "502") || // Bad Gateway
-	   strings.Contains(errMsg, "503") || // Service Unavailable
-	   strings.Contains(errMsg, "504") || // Gateway Timeout
-	   strings.Contains(errMsg, "429") {  // Too Many Requests
+		strings.Contains(errMsg, "502") || // Bad Gateway
+		strings.Contains(errMsg, "503") || // Service Unavailable
+		strings.Contains(errMsg, "504") || // Gateway Timeout
+		strings.Contains(errMsg, "429") { // Too Many Requests
 		return true
 	}
 
