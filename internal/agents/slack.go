@@ -109,7 +109,7 @@ type AgentInfoResult struct {
 func handleGetAgentInfo(ctx tool.Context, args AgentInfoArgs) (AgentInfoResult, error) {
 	return AgentInfoResult{
 		AgentName:   "slack_assistant",
-		Model:       "claude-3-5-sonnet-20241022",
+		Model:       "claude-sonnet-4-5-20250929",
 		Description: "Claude-powered assistant for Slack workspace interactions",
 		Capabilities: []string{
 			"General conversation and Q&A",

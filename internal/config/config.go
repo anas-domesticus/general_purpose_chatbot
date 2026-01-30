@@ -57,7 +57,7 @@ func (c *SlackConfig) Enabled() bool {
 // AnthropicConfig holds Anthropic-specific configuration
 type AnthropicConfig struct {
 	APIKey         string        `env:"ANTHROPIC_API_KEY" yaml:"api_key" required:"true"`
-	Model          string        `env:"CLAUDE_MODEL" yaml:"model" default:"claude-3-5-sonnet-20241022"`
+	Model          string        `env:"CLAUDE_MODEL" yaml:"model" default:"claude-sonnet-4-5-20250929"`
 	APIBaseURL     string        `env:"ANTHROPIC_API_URL" yaml:"api_base_url" default:"https://api.anthropic.com"`
 	MaxRetries     int           `env:"ANTHROPIC_MAX_RETRIES" yaml:"max_retries" default:"3"`
 	InitialBackoff time.Duration `env:"ANTHROPIC_INITIAL_BACKOFF" yaml:"initial_backoff" default:"1s"`
