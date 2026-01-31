@@ -1,6 +1,8 @@
+// Package anthropic provides an Anthropic Claude implementation for the ADK model.LLM interface.
 package anthropic
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -10,155 +12,152 @@ import (
 	"google.golang.org/genai"
 )
 
-// transformADKToAnthropic converts ADK Content to Anthropic MessageParam
+// transformADKToAnthropic converts ADK content messages to Anthropic message params.
+// It extracts system messages separately since Anthropic requires them as a top-level parameter.
+// Returns the messages, system prompt, and any error.
 func transformADKToAnthropic(contents []*genai.Content) ([]anthropic.MessageParam, string, error) {
-	if len(contents) == 0 {
-		return nil, "", fmt.Errorf("no contents provided")
-	}
-
 	var messages []anthropic.MessageParam
-	var systemPrompt string
+	var systemPrompt strings.Builder
 
 	for _, content := range contents {
-		// Handle system messages separately
+		if content == nil {
+			continue
+		}
+
+		// Handle system messages - extract them for the system parameter
 		if content.Role == "system" {
-			systemParts := extractTextParts(content.Parts)
-			if len(systemParts) > 0 {
-				if systemPrompt != "" {
-					systemPrompt += "\n\n"
+			for _, part := range content.Parts {
+				if part != nil && part.Text != "" {
+					if systemPrompt.Len() > 0 {
+						systemPrompt.WriteString("\n\n")
+					}
+					systemPrompt.WriteString(part.Text)
 				}
-				systemPrompt += strings.Join(systemParts, "\n")
 			}
 			continue
 		}
 
-		// Convert to Anthropic message
-		message, err := convertContentToMessage(content)
+		// Convert user/assistant messages
+		msg, err := convertContentToMessage(content)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to convert content: %w", err)
 		}
-
-		if message != nil {
-			messages = append(messages, *message)
+		if msg != nil {
+			messages = append(messages, *msg)
 		}
 	}
 
-	return messages, systemPrompt, nil
+	return messages, systemPrompt.String(), nil
 }
 
-// convertContentToMessage converts a single genai.Content to anthropic.MessageParam
+// convertContentToMessage converts a single genai.Content to an Anthropic MessageParam.
 func convertContentToMessage(content *genai.Content) (*anthropic.MessageParam, error) {
 	if content == nil || len(content.Parts) == 0 {
 		return nil, nil
 	}
 
-	// Map roles
-	var role anthropic.MessageParamRole
-	switch content.Role {
-	case "user":
-		role = anthropic.MessageParamRoleUser
-	case "model", "assistant":
-		role = anthropic.MessageParamRoleAssistant
-	case "system":
-		// System messages are handled separately, skip here
-		return nil, nil
-	default:
-		// Default to user for unknown roles
-		role = anthropic.MessageParamRoleUser
-	}
-
-	// Convert parts to content blocks
-	var contentBlocks []anthropic.ContentBlockParamUnion
+	var blocks []anthropic.ContentBlockParamUnion
 
 	for _, part := range content.Parts {
+		if part == nil {
+			continue
+		}
+
 		block, err := convertPartToContentBlock(part)
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert part: %w", err)
+			return nil, err
 		}
-		if block != nil {
-			contentBlocks = append(contentBlocks, *block)
+		if block != (anthropic.ContentBlockParamUnion{}) {
+			blocks = append(blocks, block)
 		}
 	}
 
-	if len(contentBlocks) == 0 {
+	if len(blocks) == 0 {
 		return nil, nil
 	}
 
-	message := anthropic.MessageParam{
-		Role:    role,
-		Content: contentBlocks,
+	// Map ADK roles to Anthropic roles
+	var msg anthropic.MessageParam
+	switch content.Role {
+	case "user":
+		msg = anthropic.NewUserMessage(blocks...)
+	case "model", "assistant":
+		msg = anthropic.NewAssistantMessage(blocks...)
+	default:
+		// Default to user for unknown roles
+		msg = anthropic.NewUserMessage(blocks...)
 	}
 
-	return &message, nil
+	return &msg, nil
 }
 
-// convertPartToContentBlock converts genai.Part to Anthropic ContentBlockParamUnion
-func convertPartToContentBlock(part *genai.Part) (*anthropic.ContentBlockParamUnion, error) {
+// convertPartToContentBlock converts a genai.Part to an Anthropic ContentBlockParamUnion.
+func convertPartToContentBlock(part *genai.Part) (anthropic.ContentBlockParamUnion, error) {
+	if part == nil {
+		return anthropic.ContentBlockParamUnion{}, nil
+	}
+
 	// Handle text content
 	if part.Text != "" {
-		return &anthropic.ContentBlockParamUnion{
-			OfText: &anthropic.TextBlockParam{
-				Text: part.Text,
-			},
-		}, nil
+		return anthropic.NewTextBlock(part.Text), nil
 	}
 
-	// Handle inline data (images) - simplified approach
+	// Handle inline image data
 	if part.InlineData != nil {
-		// For now, convert images to text description
-		// In a full implementation, you would handle image uploads properly
-		imageDesc := fmt.Sprintf("[Image: %s, %d bytes]", part.InlineData.MIMEType, len(part.InlineData.Data))
-		return &anthropic.ContentBlockParamUnion{
-			OfText: &anthropic.TextBlockParam{
-				Text: imageDesc,
-			},
-		}, nil
+		mediaType := part.InlineData.MIMEType
+		// Map MIME types to Anthropic's supported types
+		var anthropicMediaType string
+		switch mediaType {
+		case "image/jpeg":
+			anthropicMediaType = "image/jpeg"
+		case "image/png":
+			anthropicMediaType = "image/png"
+		case "image/gif":
+			anthropicMediaType = "image/gif"
+		case "image/webp":
+			anthropicMediaType = "image/webp"
+		default:
+			// Default to jpeg if unknown
+			anthropicMediaType = "image/jpeg"
+		}
+
+		// Encode data to base64
+		encodedData := base64.StdEncoding.EncodeToString(part.InlineData.Data)
+		return anthropic.NewImageBlockBase64(anthropicMediaType, encodedData), nil
 	}
 
-	// Handle file data
-	if part.FileData != nil {
-		fileInfo := fmt.Sprintf("[File: %s, MIME: %s]", part.FileData.FileURI, part.FileData.MIMEType)
-		return &anthropic.ContentBlockParamUnion{
-			OfText: &anthropic.TextBlockParam{
-				Text: fileInfo,
-			},
-		}, nil
-	}
-
-	// For other types like function calls, convert to text for now
-	// In a full implementation, you would handle tool use properly
+	// Handle function call (tool use)
 	if part.FunctionCall != nil {
-		funcInfo := fmt.Sprintf("[Function call: %s]", part.FunctionCall.Name)
-		return &anthropic.ContentBlockParamUnion{
-			OfText: &anthropic.TextBlockParam{
-				Text: funcInfo,
-			},
-		}, nil
+		return anthropic.NewToolUseBlock(
+			part.FunctionCall.ID,
+			part.FunctionCall.Args,
+			part.FunctionCall.Name,
+		), nil
 	}
 
+	// Handle function response (tool result)
 	if part.FunctionResponse != nil {
-		respInfo := fmt.Sprintf("[Function response: %s]", part.FunctionResponse.Name)
-		return &anthropic.ContentBlockParamUnion{
-			OfText: &anthropic.TextBlockParam{
-				Text: respInfo,
-			},
-		}, nil
+		// Serialize the response to JSON string
+		responseJSON, err := json.Marshal(part.FunctionResponse.Response)
+		if err != nil {
+			return anthropic.ContentBlockParamUnion{}, fmt.Errorf("failed to marshal function response: %w", err)
+		}
+		return anthropic.NewToolResultBlock(part.FunctionResponse.ID, string(responseJSON), false), nil
 	}
 
-	// If no recognized content type, return nil
-	return nil, nil
+	// Unknown part type - skip
+	return anthropic.ContentBlockParamUnion{}, nil
 }
 
-// transformAnthropicToADK converts Anthropic Message response to ADK LLMResponse
-func transformAnthropicToADK(message *anthropic.Message) (*model.LLMResponse, error) {
-	if message == nil {
-		return nil, fmt.Errorf("message is nil")
+// transformAnthropicToADK converts an Anthropic Message response to an ADK LLMResponse.
+func transformAnthropicToADK(msg *anthropic.Message) (*model.LLMResponse, error) {
+	if msg == nil {
+		return nil, fmt.Errorf("nil message")
 	}
 
-	// Convert content blocks to genai.Parts
 	var parts []*genai.Part
 
-	for _, block := range message.Content {
+	for _, block := range msg.Content {
 		part, err := convertContentBlockToPart(block)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert content block: %w", err)
@@ -168,97 +167,133 @@ func transformAnthropicToADK(message *anthropic.Message) (*model.LLMResponse, er
 		}
 	}
 
-	// Create genai.Content
-	content := &genai.Content{
-		Role:  "model", // ADK expects "model" for assistant responses
-		Parts: parts,
-	}
-
-	// Convert usage metadata if available
-	var usageMetadata *genai.GenerateContentResponseUsageMetadata
-	usageMetadata = &genai.GenerateContentResponseUsageMetadata{
-		PromptTokenCount:     int32(message.Usage.InputTokens),
-		CandidatesTokenCount: int32(message.Usage.OutputTokens),
-		TotalTokenCount:      int32(message.Usage.InputTokens + message.Usage.OutputTokens),
-	}
-
-	// Map finish reason
-	var finishReason genai.FinishReason
-	switch message.StopReason {
-	case anthropic.StopReasonEndTurn:
-		finishReason = genai.FinishReasonStop
-	case anthropic.StopReasonMaxTokens:
-		finishReason = genai.FinishReasonMaxTokens
-	case anthropic.StopReasonStopSequence:
-		finishReason = genai.FinishReasonStop
-	case anthropic.StopReasonToolUse:
-		finishReason = genai.FinishReasonStop
-	default:
-		finishReason = genai.FinishReasonOther
-	}
+	// Map Anthropic stop reason to genai FinishReason
+	finishReason := mapStopReason(msg.StopReason)
 
 	response := &model.LLMResponse{
-		Content:       content,
-		UsageMetadata: usageMetadata,
-		FinishReason:  finishReason,
-		TurnComplete:  true,
-		Partial:       false,
+		Content: &genai.Content{
+			Role:  "model",
+			Parts: parts,
+		},
+		UsageMetadata: &genai.GenerateContentResponseUsageMetadata{
+			PromptTokenCount:     int32(msg.Usage.InputTokens),
+			CandidatesTokenCount: int32(msg.Usage.OutputTokens),
+			TotalTokenCount:      int32(msg.Usage.InputTokens + msg.Usage.OutputTokens),
+		},
+		FinishReason: finishReason,
+		TurnComplete: true,
 	}
 
 	return response, nil
 }
 
-// convertContentBlockToPart converts Anthropic ContentBlockUnion to genai.Part
+// convertContentBlockToPart converts an Anthropic ContentBlockUnion to a genai.Part.
 func convertContentBlockToPart(block anthropic.ContentBlockUnion) (*genai.Part, error) {
 	switch block.Type {
 	case "text":
-		return &genai.Part{
-			Text: block.Text,
-		}, nil
-
-	case "thinking":
-		// Preserve Claude's extended thinking/reasoning in a structured format
-		return &genai.Part{
-			Text: fmt.Sprintf("<thinking>\n%s\n</thinking>", block.Thinking),
-		}, nil
+		return &genai.Part{Text: block.Text}, nil
 
 	case "tool_use":
-		// Convert tool use to function call
+		// Parse the input JSON
 		var args map[string]any
 		if len(block.Input) > 0 {
 			if err := json.Unmarshal(block.Input, &args); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal tool input: %w", err)
 			}
 		}
+
 		return &genai.Part{
 			FunctionCall: &genai.FunctionCall{
+				ID:   block.ID,
 				Name: block.Name,
 				Args: args,
 			},
 		}, nil
 
-	default:
-		// For unrecognized types, preserve with type annotation
+	case "thinking":
+		// Return thinking content as text with a marker
 		return &genai.Part{
-			Text: fmt.Sprintf("[%s content]", block.Type),
+			Text:    block.Thinking,
+			Thought: true,
 		}, nil
+
+	default:
+		// Unknown block type - skip
+		return nil, nil
 	}
 }
 
-// transformToolsToAnthropic converts ADK tools to Anthropic tool format
+// mapStopReason converts Anthropic's StopReason to genai.FinishReason.
+func mapStopReason(stopReason anthropic.StopReason) genai.FinishReason {
+	switch stopReason {
+	case anthropic.StopReasonEndTurn:
+		return genai.FinishReasonStop
+	case anthropic.StopReasonMaxTokens:
+		return genai.FinishReasonMaxTokens
+	case anthropic.StopReasonToolUse:
+		return genai.FinishReasonStop
+	case anthropic.StopReasonStopSequence:
+		return genai.FinishReasonStop
+	case anthropic.StopReasonRefusal:
+		return genai.FinishReasonSafety
+	default:
+		return genai.FinishReasonOther
+	}
+}
+
+// transformToolsToAnthropic converts ADK tool definitions to Anthropic ToolUnionParam.
+// ADK tools come as map[string]any with "name", "description", and "inputSchema" fields.
 func transformToolsToAnthropic(tools map[string]any) ([]anthropic.ToolUnionParam, error) {
-	// For now, return empty tools array
-	// In a full implementation, you would properly convert tool schemas
-	return []anthropic.ToolUnionParam{}, nil
-}
-
-// extractTextParts extracts text content from genai.Parts
-func extractTextParts(parts []*genai.Part) []string {
-	var textParts []string
-	for _, part := range parts {
-		if part.Text != "" {
-			textParts = append(textParts, part.Text)
-		}
+	if tools == nil {
+		return nil, nil
 	}
-	return textParts
+
+	// The tools map contains tool declarations as values
+	// Each tool declaration should have: name, description, inputSchema
+	var anthropicTools []anthropic.ToolUnionParam
+
+	for _, toolDef := range tools {
+		toolMap, ok := toolDef.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		name, _ := toolMap["name"].(string)
+		if name == "" {
+			continue
+		}
+
+		description, _ := toolMap["description"].(string)
+
+		// Build the input schema
+		inputSchema := anthropic.ToolInputSchemaParam{}
+
+		if schema, ok := toolMap["inputSchema"].(map[string]any); ok {
+			// Extract properties
+			if props, ok := schema["properties"]; ok {
+				inputSchema.Properties = props
+			}
+
+			// Extract required fields
+			if req, ok := schema["required"].([]any); ok {
+				required := make([]string, 0, len(req))
+				for _, r := range req {
+					if s, ok := r.(string); ok {
+						required = append(required, s)
+					}
+				}
+				inputSchema.Required = required
+			}
+		}
+
+		// Create the tool param
+		toolParam := anthropic.ToolUnionParamOfTool(inputSchema, name)
+		if description != "" {
+			toolParam.OfTool.Description = anthropic.String(description)
+		}
+
+		anthropicTools = append(anthropicTools, toolParam)
+	}
+
+	return anthropicTools, nil
 }
