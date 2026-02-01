@@ -75,6 +75,7 @@ func main() {
 	slackConnector, err := slack.NewConnector(slack.Config{
 		BotToken: cfg.Slack.BotToken,
 		AppToken: cfg.Slack.AppToken,
+		Debug:    cfg.Slack.Debug,
 	}, exec)
 	if err != nil {
 		log.Error("Failed to create Slack connector", logger.ErrorField(err))
