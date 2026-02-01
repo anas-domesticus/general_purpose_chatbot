@@ -10,16 +10,33 @@ import (
 )
 
 // NewLoader creates an agent loader with the provided model and MCP configuration
-func NewLoader(llmModel model.LLM, mcpConfig config.MCPConfig) agent.Loader {
-	// Create the Slack agent with MCP configuration
-	slackAgent, err := NewSlackAgent(llmModel, mcpConfig)
-	if err != nil {
-		log.Fatalf("Failed to create slack agent: %v", err)
+func NewLoader(llmModel model.LLM, mcpConfig config.MCPConfig, platform string) agent.Loader {
+	// Create agent configuration based on platform
+	var agentConfig AgentConfig
+	switch platform {
+	case "slack":
+		agentConfig = AgentConfig{
+			Name:        "chat_assistant",
+			Platform:    "Slack",
+			Description: "Claude-powered assistant for Slack workspace interactions with MCP capabilities",
+		}
+	case "telegram":
+		agentConfig = AgentConfig{
+			Name:        "chat_assistant",
+			Platform:    "Telegram",
+			Description: "Claude-powered assistant for Telegram chat interactions with MCP capabilities",
+		}
+	default:
+		log.Fatalf("Unsupported platform: %s", platform)
 	}
 
-	// For now, we return a single agent loader
-	// This can be extended to support multiple agents
-	return agent.NewSingleLoader(slackAgent)
+	// Create the chat agent with MCP configuration
+	chatAgent, err := NewChatAgent(llmModel, mcpConfig, agentConfig)
+	if err != nil {
+		log.Fatalf("Failed to create %s agent: %v", platform, err)
+	}
+
+	return agent.NewSingleLoader(chatAgent)
 }
 
 // loadInstructionFile loads agent instructions from a file in the current working directory

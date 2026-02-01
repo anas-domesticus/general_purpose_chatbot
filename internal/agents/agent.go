@@ -18,16 +18,23 @@ import (
 	"google.golang.org/adk/tool/mcptoolset"
 )
 
-// NewSlackAgent creates a new Slack workspace agent with Claude model and MCP configuration
-func NewSlackAgent(llmModel model.LLM, mcpConfig config.MCPConfig) (agent.Agent, error) {
+// AgentConfig holds configuration for creating a chat agent
+type AgentConfig struct {
+	Name        string // Agent name (e.g., "slack_assistant", "telegram_assistant")
+	Platform    string // Platform name for description (e.g., "Slack", "Telegram")
+	Description string // Agent description
+}
+
+// NewChatAgent creates a new chat agent with Claude model and MCP configuration
+func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig AgentConfig) (agent.Agent, error) {
 	// Load agent instructions from system.md in current directory
 	instructions := loadInstructionFile("system.md")
 
-	// Create agent info tool
+	// Create agent info tool with platform-specific handler
 	agentInfoTool, err := functiontool.New(functiontool.Config{
 		Name:        "get_agent_info",
 		Description: "Get information about the current agent and its capabilities",
-	}, handleGetAgentInfo)
+	}, createAgentInfoHandler(agentConfig))
 	if err != nil {
 		return nil, err
 	}
@@ -61,10 +68,10 @@ func NewSlackAgent(llmModel model.LLM, mcpConfig config.MCPConfig) (agent.Agent,
 	}
 
 	// Create the LLM agent with basic tools and MCP toolsets
-	slackAgent, err := llmagent.New(llmagent.Config{
-		Name:        "slack_assistant",
+	chatAgent, err := llmagent.New(llmagent.Config{
+		Name:        agentConfig.Name,
 		Model:       llmModel,
-		Description: "Claude-powered assistant for Slack workspace interactions with MCP capabilities",
+		Description: agentConfig.Description,
 		Instruction: instructions,
 		Tools:       tools,
 		Toolsets:    toolsets,
@@ -74,7 +81,7 @@ func NewSlackAgent(llmModel model.LLM, mcpConfig config.MCPConfig) (agent.Agent,
 		return nil, err
 	}
 
-	return slackAgent, nil
+	return chatAgent, nil
 }
 
 // HTTPRequestArgs represents the arguments for the HTTP request tool
@@ -162,29 +169,33 @@ type AgentInfoArgs struct{}
 type AgentInfoResult struct {
 	AgentName    string   `json:"agent_name"`
 	Model        string   `json:"model"`
+	Platform     string   `json:"platform"`
 	Description  string   `json:"description"`
 	Capabilities []string `json:"capabilities"`
 	Status       string   `json:"status"`
 	Framework    string   `json:"framework"`
 }
 
-// handleGetAgentInfo is the agent info tool handler
-func handleGetAgentInfo(ctx tool.Context, args AgentInfoArgs) (AgentInfoResult, error) {
-	return AgentInfoResult{
-		AgentName:   "slack_assistant",
-		Model:       "claude-sonnet-4-5-20250929",
-		Description: "Claude-powered assistant for Slack workspace interactions",
-		Capabilities: []string{
-			"General conversation and Q&A",
-			"Code analysis and programming help",
-			"Technical discussions",
-			"Creative writing assistance",
-			"Problem solving and reasoning",
-			"HTTP requests to external APIs and services",
-		},
-		Status:    "operational",
-		Framework: "Google ADK Go v0.3.0",
-	}, nil
+// createAgentInfoHandler creates a platform-specific agent info handler
+func createAgentInfoHandler(agentConfig AgentConfig) func(tool.Context, AgentInfoArgs) (AgentInfoResult, error) {
+	return func(ctx tool.Context, args AgentInfoArgs) (AgentInfoResult, error) {
+		return AgentInfoResult{
+			AgentName:   agentConfig.Name,
+			Platform:    agentConfig.Platform,
+			Model:       "claude-sonnet-4-5-20250929",
+			Description: agentConfig.Description,
+			Capabilities: []string{
+				"General conversation and Q&A",
+				"Code analysis and programming help",
+				"Technical discussions",
+				"Creative writing assistance",
+				"Problem solving and reasoning",
+				"HTTP requests to external APIs and services",
+			},
+			Status:    "operational",
+			Framework: "Google ADK Go v0.3.0",
+		}, nil
+	}
 }
 
 // createMCPToolsets creates MCP toolsets based on configuration

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	appconfig "github.com/lewisedginton/general_purpose_chatbot/internal/config"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/executor"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/slack"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/telegram"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/models/anthropic"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/config"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
@@ -34,7 +36,7 @@ func main() {
 
 	cfg.LogConfig(log)
 
-	log.Info("Starting Slack Chatbot",
+	log.Info("Starting Multi-Platform Chatbot",
 		logger.StringField("version", cfg.Version),
 		logger.StringField("claude_model", cfg.Anthropic.Model))
 
@@ -51,25 +53,74 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Verify Slack is configured
-	if !cfg.Slack.Enabled() {
-		log.Error("Slack is not configured. Set SLACK_BOT_TOKEN and SLACK_APP_TOKEN environment variables.")
-		os.Exit(1)
-	}
-
-	// Create Slack agent
-	slackAgent, err := agents.NewSlackAgent(claudeModel, cfg.MCP)
+	// Create generic chat agent (shared across all platforms)
+	chatAgent, err := agents.NewChatAgent(claudeModel, cfg.MCP, agents.AgentConfig{
+		Name:        "chat_assistant",
+		Platform:    "Multi-Platform",
+		Description: "Claude-powered assistant with MCP capabilities",
+	})
 	if err != nil {
-		log.Error("Failed to create Slack agent", logger.ErrorField(err))
+		log.Error("Failed to create chat agent", logger.ErrorField(err))
 		os.Exit(1)
 	}
 
-	// Create executor
-	exec, err := executor.NewExecutor(slackAgent, "chatbot")
+	// Create executor (shared across all platforms)
+	exec, err := executor.NewExecutor(chatAgent, "chatbot")
 	if err != nil {
 		log.Error("Failed to create executor", logger.ErrorField(err))
 		os.Exit(1)
 	}
+
+	// Detect and start enabled connectors
+	var wg sync.WaitGroup
+	enabledCount := 0
+
+	// Start Slack connector if configured
+	if cfg.Slack.Enabled() {
+		enabledCount++
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := startSlackConnector(ctx, cfg, exec, log); err != nil {
+				log.Error("Slack connector failed", logger.ErrorField(err))
+				cancel() // Trigger shutdown on error
+			}
+		}()
+	} else {
+		log.Info("Slack connector disabled (missing SLACK_BOT_TOKEN or SLACK_APP_TOKEN)")
+	}
+
+	// Start Telegram connector if configured
+	if cfg.Telegram.Enabled() {
+		enabledCount++
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := startTelegramConnector(ctx, cfg, exec, log); err != nil {
+				log.Error("Telegram connector failed", logger.ErrorField(err))
+				cancel() // Trigger shutdown on error
+			}
+		}()
+	} else {
+		log.Info("Telegram connector disabled (missing TELEGRAM_BOT_TOKEN)")
+	}
+
+	// Verify at least one connector is enabled
+	if enabledCount == 0 {
+		log.Error("No connectors configured. Please set environment variables for at least one platform (Slack or Telegram)")
+		os.Exit(1)
+	}
+
+	log.Info("All enabled connectors started", logger.IntField("count", enabledCount))
+
+	// Wait for all connectors to finish
+	wg.Wait()
+	log.Info("All connectors stopped")
+}
+
+// startSlackConnector initializes and starts the Slack connector
+func startSlackConnector(ctx context.Context, cfg *appconfig.AppConfig, exec *executor.Executor, log logger.Logger) error {
+	log.Info("Starting Slack connector")
 
 	// Create Slack connector
 	slackConnector, err := slack.NewConnector(slack.Config{
@@ -78,16 +129,46 @@ func main() {
 		Debug:    cfg.Slack.Debug,
 	}, exec)
 	if err != nil {
-		log.Error("Failed to create Slack connector", logger.ErrorField(err))
-		os.Exit(1)
+		return fmt.Errorf("failed to create Slack connector: %w", err)
 	}
 
-	// Start Slack connector
-	log.Info("Starting Slack connector")
+	// Start connector (blocks until context is cancelled)
 	if err := slackConnector.Start(ctx); err != nil {
-		log.Error("Slack connector error", logger.ErrorField(err))
-		os.Exit(1)
+		return fmt.Errorf("Slack connector error: %w", err)
 	}
+
+	return nil
+}
+
+// startTelegramConnector initializes and starts the Telegram connector
+func startTelegramConnector(ctx context.Context, cfg *appconfig.AppConfig, exec *executor.Executor, log logger.Logger) error {
+	log.Info("Starting Telegram connector")
+
+	// Create Telegram connector
+	telegramConnector, err := telegram.NewConnector(telegram.Config{
+		BotToken: cfg.Telegram.BotToken,
+		Debug:    cfg.Telegram.Debug,
+	}, exec)
+	if err != nil {
+		return fmt.Errorf("failed to create Telegram connector: %w", err)
+	}
+
+	// Get and log bot info
+	botInfo, err := telegramConnector.GetBotInfo(ctx)
+	if err != nil {
+		log.Warn("Failed to get Telegram bot info", logger.ErrorField(err))
+	} else {
+		log.Info("Telegram bot connected",
+			logger.StringField("bot_username", botInfo.Username),
+			logger.StringField("bot_first_name", botInfo.FirstName))
+	}
+
+	// Start connector (blocks until context is cancelled)
+	if err := telegramConnector.Start(ctx); err != nil {
+		return fmt.Errorf("Telegram connector error: %w", err)
+	}
+
+	return nil
 }
 
 // setupGracefulShutdown sets up signal handling for graceful shutdown
