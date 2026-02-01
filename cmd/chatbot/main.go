@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"sync"
@@ -50,6 +52,14 @@ func main() {
 	defer cancel()
 
 	setupGracefulShutdown(cancel, log)
+
+	// Start pprof server for profiling
+	go func() {
+		log.Info("Starting pprof server on :6060")
+		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+			log.Error("pprof server failed", logger.ErrorField(err))
+		}
+	}()
 
 	// Create Claude model instance
 	claudeModel, err := anthropic.NewClaudeModel(cfg.Anthropic.APIKey, cfg.Anthropic.Model)

@@ -7,19 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/adk/model"
 	"google.golang.org/adk/session"
 )
-
-// testLogger creates a simple logger for tests
-func testLogger() logger.Logger {
-	return logger.NewLogger(logger.Config{
-		Level:  logger.ErrorLevel, // Only show errors in tests
-		Format: "text",
-	})
-}
 
 // Test helper functions to match the old convenience functions
 func NewLocalJSONSessionService(baseDir string) session.Service {
@@ -120,15 +112,13 @@ func TestJSONSessionService_CreateDuplicate(t *testing.T) {
 	}
 
 	// Create first session
-	resp1, err := service.Create(ctx, req)
+	_, err = service.Create(ctx, req)
 	require.NoError(t, err)
 
-	// Create duplicate session - should return existing
-	resp2, err := service.Create(ctx, req)
-	require.NoError(t, err)
-	assert.Equal(t, resp1.Session.ID(), resp2.Session.ID())
-	// Use approximate time comparison to handle timezone differences
-	assert.WithinDuration(t, resp1.Session.LastUpdateTime(), resp2.Session.LastUpdateTime(), time.Second)
+	// Create duplicate session - should fail (ADK-compatible behavior)
+	_, err = service.Create(ctx, req)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already exists")
 }
 
 func TestJSONSessionService_Get(t *testing.T) {
@@ -164,7 +154,8 @@ func TestJSONSessionService_Get(t *testing.T) {
 	assert.Equal(t, createResp.Session.ID(), getResp.Session.ID())
 	assert.Equal(t, createResp.Session.AppName(), getResp.Session.AppName())
 	assert.Equal(t, createResp.Session.UserID(), getResp.Session.UserID())
-	assert.Equal(t, createResp.Session.LastUpdateTime(), getResp.Session.LastUpdateTime())
+	assert.True(t, createResp.Session.LastUpdateTime().Equal(getResp.Session.LastUpdateTime()),
+		"LastUpdateTime should be equal (ignoring timezone)")
 }
 
 func TestJSONSessionService_List(t *testing.T) {
@@ -497,4 +488,285 @@ func TestNewSessionService(t *testing.T) {
 		Local:   LocalConfig{BaseDir: tmpDir},
 	})
 	assert.Error(t, err)
+}
+
+// TestAppendEvent_StateDelta tests that event state deltas are applied to session state
+func TestAppendEvent_StateDelta(t *testing.T) {
+	tmpDir := t.TempDir()
+	service := NewLocalJSONSessionService(tmpDir)
+	ctx := context.Background()
+
+	// Create a session
+	createResp, err := service.Create(ctx, &session.CreateRequest{
+		AppName:   "test-app",
+		UserID:    "user123",
+		SessionID: "state-delta-test",
+	})
+	require.NoError(t, err)
+
+	// Create an event with state delta
+	event := &session.Event{
+		Author: "test-user",
+		Actions: session.EventActions{
+			StateDelta: map[string]any{
+				"key1": "value1",
+				"key2": 42,
+				"key3": true,
+			},
+		},
+	}
+
+	// Append the event
+	err = service.AppendEvent(ctx, createResp.Session, event)
+	require.NoError(t, err)
+
+	// Get the session and verify state was updated
+	getResp, err := service.Get(ctx, &session.GetRequest{
+		AppName:   "test-app",
+		UserID:    "user123",
+		SessionID: "state-delta-test",
+	})
+	require.NoError(t, err)
+
+	state := getResp.Session.State()
+
+	value1, err := state.Get("key1")
+	require.NoError(t, err)
+	assert.Equal(t, "value1", value1)
+
+	value2, err := state.Get("key2")
+	require.NoError(t, err)
+	assert.Equal(t, 42, value2)
+
+	value3, err := state.Get("key3")
+	require.NoError(t, err)
+	assert.Equal(t, true, value3)
+}
+
+// TestAppendEvent_TemporaryKeysFiltered tests that temporary keys are not persisted
+func TestAppendEvent_TemporaryKeysFiltered(t *testing.T) {
+	tmpDir := t.TempDir()
+	service := NewLocalJSONSessionService(tmpDir)
+	ctx := context.Background()
+
+	// Create a session
+	createResp, err := service.Create(ctx, &session.CreateRequest{
+		AppName:   "test-app",
+		UserID:    "user123",
+		SessionID: "temp-keys-test",
+	})
+	require.NoError(t, err)
+
+	// Create an event with both regular and temporary state keys
+	event := &session.Event{
+		Author: "test-user",
+		Actions: session.EventActions{
+			StateDelta: map[string]any{
+				"regular_key":   "should_persist",
+				"temp:temp_key": "should_not_persist",
+			},
+		},
+	}
+
+	// Append the event
+	err = service.AppendEvent(ctx, createResp.Session, event)
+	require.NoError(t, err)
+
+	// Get the session and verify only regular keys were persisted
+	getResp, err := service.Get(ctx, &session.GetRequest{
+		AppName:   "test-app",
+		UserID:    "user123",
+		SessionID: "temp-keys-test",
+	})
+	require.NoError(t, err)
+
+	state := getResp.Session.State()
+
+	// Regular key should exist
+	value, err := state.Get("regular_key")
+	require.NoError(t, err)
+	assert.Equal(t, "should_persist", value)
+
+	// Temporary key should NOT exist
+	_, err = state.Get("temp:temp_key")
+	assert.Error(t, err, "Temporary keys should not be persisted")
+}
+
+// TestAppendEvent_PartialEvents tests that partial events are skipped
+func TestAppendEvent_PartialEvents(t *testing.T) {
+	tmpDir := t.TempDir()
+	service := NewLocalJSONSessionService(tmpDir)
+	ctx := context.Background()
+
+	// Create a session
+	createResp, err := service.Create(ctx, &session.CreateRequest{
+		AppName:   "test-app",
+		UserID:    "user123",
+		SessionID: "partial-event-test",
+	})
+	require.NoError(t, err)
+
+	// Create a partial event - Partial is in the LLMResponse
+	partialEvent := &session.Event{
+		Author: "test-user",
+		LLMResponse: model.LLMResponse{
+			Partial: true,
+		},
+	}
+
+	// Append the partial event - should not error but also not save
+	err = service.AppendEvent(ctx, createResp.Session, partialEvent)
+	require.NoError(t, err)
+
+	// Get the session and verify no events were added
+	getResp, err := service.Get(ctx, &session.GetRequest{
+		AppName:   "test-app",
+		UserID:    "user123",
+		SessionID: "partial-event-test",
+	})
+	require.NoError(t, err)
+
+	events := getResp.Session.Events()
+	assert.Equal(t, 0, events.Len(), "Partial events should not be persisted")
+}
+
+// TestGet_EventFiltering tests event filtering by NumRecentEvents and After
+func TestGet_EventFiltering(t *testing.T) {
+	tmpDir := t.TempDir()
+	service := NewLocalJSONSessionService(tmpDir)
+	ctx := context.Background()
+
+	// Create a session
+	createResp, err := service.Create(ctx, &session.CreateRequest{
+		AppName:   "test-app",
+		UserID:    "user123",
+		SessionID: "filter-test",
+	})
+	require.NoError(t, err)
+
+	// Append multiple events with different timestamps
+	baseTime := time.Now().Add(-10 * time.Minute)
+	for i := 0; i < 5; i++ {
+		event := &session.Event{
+			Author:    "test-user",
+			Timestamp: baseTime.Add(time.Duration(i) * time.Minute),
+		}
+		err = service.AppendEvent(ctx, createResp.Session, event)
+		require.NoError(t, err)
+	}
+
+	// Test 1: Get only recent events
+	getResp, err := service.Get(ctx, &session.GetRequest{
+		AppName:         "test-app",
+		UserID:          "user123",
+		SessionID:       "filter-test",
+		NumRecentEvents: 2,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 2, getResp.Session.Events().Len(), "Should return only 2 most recent events")
+
+	// Test 2: Get events after a timestamp
+	cutoffTime := baseTime.Add(2 * time.Minute)
+	getResp, err = service.Get(ctx, &session.GetRequest{
+		AppName:   "test-app",
+		UserID:    "user123",
+		SessionID: "filter-test",
+		After:     cutoffTime,
+	})
+	require.NoError(t, err)
+	// Should get events at minutes 2, 3, 4 (3 events >= cutoffTime)
+	assert.Equal(t, 3, getResp.Session.Events().Len(), "Should return events after cutoff time")
+
+	// Test 3: Combine both filters
+	getResp, err = service.Get(ctx, &session.GetRequest{
+		AppName:         "test-app",
+		UserID:          "user123",
+		SessionID:       "filter-test",
+		NumRecentEvents: 3,
+		After:           baseTime.Add(1 * time.Minute),
+	})
+	require.NoError(t, err)
+	// NumRecentEvents=3 would give last 3 events (indices 2,3,4)
+	// After filter then applies to those 3, so we get events >= minute 1
+	// Since we took the last 3 (minutes 2,3,4), all are >= minute 1
+	assert.LessOrEqual(t, getResp.Session.Events().Len(), 3, "Should respect NumRecentEvents limit")
+
+	// Test 4: Get all events (no filtering)
+	getResp, err = service.Get(ctx, &session.GetRequest{
+		AppName:   "test-app",
+		UserID:    "user123",
+		SessionID: "filter-test",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 5, getResp.Session.Events().Len(), "Should return all events when no filters")
+}
+
+// TestConcurrentAppendEvent tests that concurrent event appends don't result in lost events
+func TestConcurrentAppendEvent(t *testing.T) {
+	// Create temp directory
+	tmpDir := t.TempDir()
+
+	// Create service
+	service := NewLocalJSONSessionService(tmpDir)
+	ctx := context.Background()
+
+	// Create a session
+	createResp, err := service.Create(ctx, &session.CreateRequest{
+		AppName:   "test",
+		UserID:    "user1",
+		SessionID: "session1",
+	})
+	require.NoError(t, err)
+
+	// Number of concurrent goroutines
+	numGoroutines := 10
+
+	// Channel to signal start
+	startChan := make(chan struct{})
+	doneChan := make(chan error, numGoroutines)
+
+	// Launch concurrent goroutines that append events
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			// Wait for start signal
+			<-startChan
+
+			// Append event - each event will get a unique timestamp-based ID
+			event := &session.Event{
+				Timestamp: time.Now(),
+			}
+			err := service.AppendEvent(ctx, createResp.Session, event)
+			doneChan <- err
+		}()
+	}
+
+	// Start all goroutines at once
+	close(startChan)
+
+	// Wait for all to complete
+	for i := 0; i < numGoroutines; i++ {
+		err := <-doneChan
+		require.NoError(t, err)
+	}
+
+	// Verify all events were saved
+	getResp, err := service.Get(ctx, &session.GetRequest{
+		AppName:   "test",
+		UserID:    "user1",
+		SessionID: "session1",
+	})
+	require.NoError(t, err)
+
+	// Check that we have all events
+	eventCount := getResp.Session.Events().Len()
+	assert.Equal(t, numGoroutines, eventCount, "Expected all %d events to be saved, but got %d", numGoroutines, eventCount)
+
+	// Verify all event IDs are unique (no events were lost/overwritten)
+	eventIDs := make(map[string]bool)
+	for event := range getResp.Session.Events().All() {
+		if event.ID != "" {
+			eventIDs[event.ID] = true
+		}
+	}
+	assert.Equal(t, numGoroutines, len(eventIDs), "Expected all event IDs to be unique")
 }

@@ -14,28 +14,29 @@ import (
 
 // JSONSessionService implements the session.Service interface using JSON file storage
 type JSONSessionService struct {
-	fileProvider FileProvider
-	mutex        sync.RWMutex
-	cache        map[string]*SessionData // In-memory cache for performance
-	log          logger.Logger           // Logger for debugging
+	fileProvider   FileProvider
+	mutex          sync.RWMutex
+	sessionLocks   map[string]*sync.Mutex // Per-session locks to prevent concurrent modifications
+	sessionLockMux sync.Mutex             // Protects the sessionLocks map itself
+	log            logger.Logger          // Logger for debugging
 }
 
 // SessionData represents the structure of session data stored in JSON
 type SessionData struct {
-	AppName   string                 `json:"app_name"`
-	UserID    string                 `json:"user_id"`
-	SessionID string                 `json:"session_id"`
-	CreatedAt time.Time              `json:"created_at"`
-	UpdatedAt time.Time              `json:"updated_at"`
-	State     map[string]interface{} `json:"state,omitempty"`  // Session state as key-value pairs
-	Events    []*session.Event       `json:"events,omitempty"` // Session events
+	AppName   string           `json:"app_name"`
+	UserID    string           `json:"user_id"`
+	SessionID string           `json:"session_id"`
+	CreatedAt time.Time        `json:"created_at"`
+	UpdatedAt time.Time        `json:"updated_at"`
+	State     map[string]any   `json:"state,omitempty"`  // Session state as key-value pairs
+	Events    []*session.Event `json:"events,omitempty"` // Session events
 }
 
 // NewJSONSessionService creates a new JSON-based session service
 func NewJSONSessionService(fileProvider FileProvider, log logger.Logger) *JSONSessionService {
 	return &JSONSessionService{
 		fileProvider: fileProvider,
-		cache:        make(map[string]*SessionData),
+		sessionLocks: make(map[string]*sync.Mutex),
 		log:          log,
 	}
 }
@@ -66,34 +67,34 @@ func (s *JSONSessionService) Create(ctx context.Context, req *session.CreateRequ
 	// Create session key for file storage
 	sessionKey := s.getSessionKey(req.AppName, req.UserID, sessionID)
 
-	// Check if session already exists
+	// Check if session already exists - return error to match ADK behavior
 	exists, err := s.fileProvider.Exists(ctx, sessionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check if session exists: %w", err)
 	}
 
 	if exists {
-		// Session already exists, load and return it
-		sessionData, err := s.loadSession(ctx, sessionKey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load existing session: %w", err)
-		}
-
-		adkSession := s.sessionDataToADKSession(sessionData)
-		return &session.CreateResponse{
-			Session: adkSession,
-		}, nil
+		return nil, fmt.Errorf("session %s already exists", sessionID)
 	}
 
 	// Create new session data
 	now := time.Now()
+
+	// Copy initial state from request
+	initialState := make(map[string]any)
+	if req.State != nil {
+		for k, v := range req.State {
+			initialState[k] = v
+		}
+	}
+
 	sessionData := &SessionData{
 		AppName:   req.AppName,
 		UserID:    req.UserID,
 		SessionID: sessionID,
 		CreatedAt: now,
 		UpdatedAt: now,
-		State:     make(map[string]interface{}),
+		State:     initialState,
 		Events:    make([]*session.Event, 0),
 	}
 
@@ -101,9 +102,6 @@ func (s *JSONSessionService) Create(ctx context.Context, req *session.CreateRequ
 	if err := s.saveSession(ctx, sessionKey, sessionData); err != nil {
 		return nil, fmt.Errorf("failed to save session: %w", err)
 	}
-
-	// Add to cache
-	s.cache[sessionKey] = sessionData
 
 	// Convert to ADK session and return
 	adkSession := s.sessionDataToADKSession(sessionData)
@@ -123,16 +121,17 @@ func (s *JSONSessionService) Get(ctx context.Context, req *session.GetRequest) (
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
-	// Try cache first
-	if sessionData, exists := s.cache[sessionKey]; exists {
-		s.log.Debug("Session cache hit", logger.StringField("session_key", sessionKey))
-		adkSession := s.sessionDataToADKSession(sessionData)
-		return &session.GetResponse{
-			Session: adkSession,
-		}, nil
+	s.log.Debug("Loading session from storage", logger.StringField("session_key", sessionKey))
+
+	// Check if session exists before trying to load
+	exists, err := s.fileProvider.Exists(ctx, sessionKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check session existence: %w", err)
 	}
 
-	s.log.Debug("Session cache miss, loading from storage", logger.StringField("session_key", sessionKey))
+	if !exists {
+		return nil, fmt.Errorf("session not found: %s (app: %s, user: %s)", req.SessionID, req.AppName, req.UserID)
+	}
 
 	// Load from file
 	sessionData, err := s.loadSession(ctx, sessionKey)
@@ -140,13 +139,55 @@ func (s *JSONSessionService) Get(ctx context.Context, req *session.GetRequest) (
 		return nil, fmt.Errorf("failed to load session: %w", err)
 	}
 
-	// Add to cache
-	s.cache[sessionKey] = sessionData
+	// Apply event filtering based on request parameters
+	filteredEvents := s.filterEvents(sessionData.Events, req)
 
-	adkSession := s.sessionDataToADKSession(sessionData)
+	// Create a copy of session data with filtered events
+	filteredSessionData := &SessionData{
+		AppName:   sessionData.AppName,
+		UserID:    sessionData.UserID,
+		SessionID: sessionData.SessionID,
+		CreatedAt: sessionData.CreatedAt,
+		UpdatedAt: sessionData.UpdatedAt,
+		State:     sessionData.State,
+		Events:    filteredEvents,
+	}
+
+	adkSession := s.sessionDataToADKSession(filteredSessionData)
 	return &session.GetResponse{
 		Session: adkSession,
 	}, nil
+}
+
+// filterEvents applies filtering based on GetRequest parameters
+func (s *JSONSessionService) filterEvents(events []*session.Event, req *session.GetRequest) []*session.Event {
+	if events == nil {
+		return nil
+	}
+
+	filteredEvents := events
+
+	// Filter by NumRecentEvents - return only the N most recent events
+	if req.NumRecentEvents > 0 && len(filteredEvents) > req.NumRecentEvents {
+		start := len(filteredEvents) - req.NumRecentEvents
+		filteredEvents = filteredEvents[start:]
+	}
+
+	// Filter by timestamp - return events with timestamp >= After
+	// Assumes events are sorted by timestamp (which they should be since we append chronologically)
+	if !req.After.IsZero() && len(filteredEvents) > 0 {
+		// Find the first event that is not before the After timestamp
+		firstIndexToKeep := 0
+		for firstIndexToKeep < len(filteredEvents) {
+			if !filteredEvents[firstIndexToKeep].Timestamp.Before(req.After) {
+				break
+			}
+			firstIndexToKeep++
+		}
+		filteredEvents = filteredEvents[firstIndexToKeep:]
+	}
+
+	return filteredEvents
 }
 
 // List lists sessions matching the request criteria
@@ -208,12 +249,9 @@ func (s *JSONSessionService) Delete(ctx context.Context, req *session.DeleteRequ
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	// Remove from cache
-	delete(s.cache, sessionKey)
-
 	// Delete from file storage
 	if err := s.fileProvider.Delete(ctx, sessionKey); err != nil {
-		return fmt.Errorf("failed to delete session file: %w", err)
+		return fmt.Errorf("failed to delete session %s (app: %s, user: %s): %w", req.SessionID, req.AppName, req.UserID, err)
 	}
 
 	return nil
@@ -229,26 +267,23 @@ func (s *JSONSessionService) AppendEvent(ctx context.Context, sess session.Sessi
 		return fmt.Errorf("event cannot be nil")
 	}
 
+	// Skip partial events - they should not be persisted
+	if event.Partial {
+		return nil
+	}
+
 	sessionKey := s.getSessionKey(sess.AppName(), sess.UserID(), sess.ID())
 	s.log.Debug("Appending event to session", logger.StringField("session_key", sessionKey))
 
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	// Acquire session-specific lock to prevent concurrent modifications to the same session
+	sessionLock := s.getSessionLock(sessionKey)
+	sessionLock.Lock()
+	defer sessionLock.Unlock()
 
-	// Load current session data
-	var sessionData *SessionData
-	var err error
-
-	// Try cache first
-	if cachedData, exists := s.cache[sessionKey]; exists {
-		sessionData = cachedData
-	} else {
-		// Load from file
-		sessionData, err = s.loadSession(ctx, sessionKey)
-		if err != nil {
-			return fmt.Errorf("failed to load session for event append: %w", err)
-		}
-		s.cache[sessionKey] = sessionData
+	// Load current session data from storage
+	sessionData, err := s.loadSession(ctx, sessionKey)
+	if err != nil {
+		return fmt.Errorf("failed to load session for event append: %w", err)
 	}
 
 	// Initialize events slice if nil
@@ -266,6 +301,25 @@ func (s *JSONSessionService) AppendEvent(ctx context.Context, sess session.Sessi
 		event.Timestamp = time.Now()
 	}
 
+	// Apply state delta from the event to the session state
+	// Exclude temporary keys (temp: prefix) from persistence
+	if len(event.Actions.StateDelta) > 0 {
+		if sessionData.State == nil {
+			sessionData.State = make(map[string]any)
+		}
+
+		// Filter out temporary keys from the event's StateDelta before persisting
+		filteredStateDelta := make(map[string]any)
+		for key, value := range event.Actions.StateDelta {
+			if !isTemporaryKey(key) {
+				sessionData.State[key] = value
+				filteredStateDelta[key] = value
+			}
+		}
+		// Update the event's StateDelta to only contain non-temporary keys
+		event.Actions.StateDelta = filteredStateDelta
+	}
+
 	// Append the event
 	sessionData.Events = append(sessionData.Events, event)
 
@@ -277,7 +331,27 @@ func (s *JSONSessionService) AppendEvent(ctx context.Context, sess session.Sessi
 	return nil
 }
 
+// isTemporaryKey checks if a state key is temporary (should not be persisted)
+func isTemporaryKey(key string) bool {
+	return len(key) >= len(session.KeyPrefixTemp) && key[:len(session.KeyPrefixTemp)] == session.KeyPrefixTemp
+}
+
 // Helper methods
+
+// getSessionLock returns a session-specific lock, creating it if necessary
+func (s *JSONSessionService) getSessionLock(sessionKey string) *sync.Mutex {
+	s.sessionLockMux.Lock()
+	defer s.sessionLockMux.Unlock()
+
+	if lock, exists := s.sessionLocks[sessionKey]; exists {
+		return lock
+	}
+
+	// Create new lock for this session
+	lock := &sync.Mutex{}
+	s.sessionLocks[sessionKey] = lock
+	return lock
+}
 
 // getSessionKey generates a consistent key for session storage
 func (s *JSONSessionService) getSessionKey(appName, userID, sessionID string) string {
@@ -346,10 +420,11 @@ func (s *JSONSessionService) saveSession(ctx context.Context, sessionKey string,
 }
 
 // sessionDataToADKSession converts internal session data to ADK session interface
+// Creates defensive copies of state and events to prevent external modifications
 func (s *JSONSessionService) sessionDataToADKSession(data *SessionData) session.Session {
 	// Initialize state if nil
 	if data.State == nil {
-		data.State = make(map[string]interface{})
+		data.State = make(map[string]any)
 	}
 
 	// Initialize events if nil
@@ -357,14 +432,23 @@ func (s *JSONSessionService) sessionDataToADKSession(data *SessionData) session.
 		data.Events = make([]*session.Event, 0)
 	}
 
+	// Create defensive copies to prevent external modifications
+	stateCopy := make(map[string]any, len(data.State))
+	for k, v := range data.State {
+		stateCopy[k] = v
+	}
+
+	eventsCopy := make([]*session.Event, len(data.Events))
+	copy(eventsCopy, data.Events)
+
 	return &adkSession{
 		appName:        data.AppName,
 		userID:         data.UserID,
 		sessionID:      data.SessionID,
 		createdAt:      data.CreatedAt,
 		lastUpdateTime: data.UpdatedAt,
-		state:          &sessionState{data: data.State},
-		events:         &sessionEvents{events: data.Events},
+		state:          &sessionState{data: stateCopy},
+		events:         &sessionEvents{events: eventsCopy},
 	}
 }
 
@@ -415,8 +499,11 @@ func generateSessionID() string {
 }
 
 // sessionState implements the session.State interface
+// IMPORTANT: Changes made via Set() are NOT persisted to storage.
+// State changes must be made through event.Actions.StateDelta for persistence.
+// This is a read-only view with in-memory modification capability for the current session lifecycle.
 type sessionState struct {
-	data  map[string]interface{}
+	data  map[string]any
 	mutex sync.RWMutex
 }
 
@@ -434,12 +521,14 @@ func (s *sessionState) Get(key string) (any, error) {
 }
 
 // Set assigns the given value to the given key
+// WARNING: This change is NOT persisted to storage. It only modifies the in-memory state.
+// To persist state changes, use event.Actions.StateDelta when appending events.
 func (s *sessionState) Set(key string, value any) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	if s.data == nil {
-		s.data = make(map[string]interface{})
+		s.data = make(map[string]any)
 	}
 
 	s.data[key] = value
