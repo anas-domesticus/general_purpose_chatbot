@@ -1,8 +1,12 @@
 package agents
 
 import (
+	"bytes"
+	"io"
 	"log"
+	"net/http"
 	"os/exec"
+	"time"
 
 	"github.com/lewisedginton/general_purpose_chatbot/internal/config"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -19,15 +23,6 @@ func NewSlackAgent(llmModel model.LLM, mcpConfig config.MCPConfig) (agent.Agent,
 	// Load agent instructions from system.md in current directory
 	instructions := loadInstructionFile("system.md")
 
-	// Create echo tool
-	echoTool, err := functiontool.New(functiontool.Config{
-		Name:        "echo",
-		Description: "Echo back text for testing the agent functionality",
-	}, handleEcho)
-	if err != nil {
-		return nil, err
-	}
-
 	// Create agent info tool
 	agentInfoTool, err := functiontool.New(functiontool.Config{
 		Name:        "get_agent_info",
@@ -37,10 +32,19 @@ func NewSlackAgent(llmModel model.LLM, mcpConfig config.MCPConfig) (agent.Agent,
 		return nil, err
 	}
 
+	// Create HTTP request tool
+	httpRequestTool, err := functiontool.New(functiontool.Config{
+		Name:        "http_request",
+		Description: "Make arbitrary HTTP requests to external APIs and services",
+	}, handleHTTPRequest)
+	if err != nil {
+		return nil, err
+	}
+
 	// Start with basic tools
 	tools := []tool.Tool{
-		echoTool,
 		agentInfoTool,
+		httpRequestTool,
 	}
 
 	// Create MCP toolsets if MCP is enabled
@@ -73,22 +77,81 @@ func NewSlackAgent(llmModel model.LLM, mcpConfig config.MCPConfig) (agent.Agent,
 	return slackAgent, nil
 }
 
-// EchoArgs represents the arguments for the echo tool
-type EchoArgs struct {
-	Text string `json:"text" jsonschema:"required" jsonschema_description:"Text to echo back"`
+// HTTPRequestArgs represents the arguments for the HTTP request tool
+type HTTPRequestArgs struct {
+	Method  string            `json:"method" jsonschema:"required" jsonschema_description:"HTTP method (GET, POST, PUT, DELETE, etc.)"`
+	URL     string            `json:"url" jsonschema:"required" jsonschema_description:"Target URL for the request"`
+	Headers map[string]string `json:"headers,omitempty" jsonschema_description:"Optional HTTP headers to include in the request"`
+	Body    string            `json:"body,omitempty" jsonschema_description:"Optional request body for POST, PUT, etc."`
 }
 
-// EchoResult represents the result of the echo tool
-type EchoResult struct {
-	EchoedText string `json:"echoed_text"`
-	Message    string `json:"message"`
+// HTTPRequestResult represents the result of the HTTP request tool
+type HTTPRequestResult struct {
+	StatusCode int               `json:"status_code"`
+	Status     string            `json:"status"`
+	Headers    map[string]string `json:"headers"`
+	Body       string            `json:"body"`
+	Error      string            `json:"error,omitempty"`
 }
 
-// handleEcho is the echo tool handler
-func handleEcho(ctx tool.Context, args EchoArgs) (EchoResult, error) {
-	return EchoResult{
-		EchoedText: args.Text,
-		Message:    "Echo: " + args.Text,
+// handleHTTPRequest is the HTTP request tool handler
+func handleHTTPRequest(ctx tool.Context, args HTTPRequestArgs) (HTTPRequestResult, error) {
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	// Create request body if provided
+	var bodyReader io.Reader
+	if args.Body != "" {
+		bodyReader = bytes.NewBufferString(args.Body)
+	}
+
+	// Create HTTP request
+	req, err := http.NewRequest(args.Method, args.URL, bodyReader)
+	if err != nil {
+		return HTTPRequestResult{
+			Error: "Failed to create request: " + err.Error(),
+		}, nil
+	}
+
+	// Add headers if provided
+	for key, value := range args.Headers {
+		req.Header.Set(key, value)
+	}
+
+	// Execute request
+	resp, err := client.Do(req)
+	if err != nil {
+		return HTTPRequestResult{
+			Error: "Request failed: " + err.Error(),
+		}, nil
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return HTTPRequestResult{
+			StatusCode: resp.StatusCode,
+			Status:     resp.Status,
+			Error:      "Failed to read response body: " + err.Error(),
+		}, nil
+	}
+
+	// Convert response headers to map
+	headers := make(map[string]string)
+	for key, values := range resp.Header {
+		if len(values) > 0 {
+			headers[key] = values[0]
+		}
+	}
+
+	return HTTPRequestResult{
+		StatusCode: resp.StatusCode,
+		Status:     resp.Status,
+		Headers:    headers,
+		Body:       string(respBody),
 	}, nil
 }
 
@@ -117,7 +180,7 @@ func handleGetAgentInfo(ctx tool.Context, args AgentInfoArgs) (AgentInfoResult, 
 			"Technical discussions",
 			"Creative writing assistance",
 			"Problem solving and reasoning",
-			"Echo functionality for testing",
+			"HTTP requests to external APIs and services",
 		},
 		Status:    "operational",
 		Framework: "Google ADK Go v0.3.0",
