@@ -25,6 +25,7 @@ type Connector struct {
 type Config struct {
 	BotToken string // xoxb-*
 	AppToken string // xapp-*
+	Debug    bool   // Enable debug logging for Slack API and Socket Mode
 }
 
 // NewConnector creates a new Slack connector with in-process executor
@@ -43,9 +44,9 @@ func NewConnector(config Config, exec *executor.Executor) (*Connector, error) {
 	client := slack.New(
 		config.BotToken,
 		slack.OptionAppLevelToken(config.AppToken),
-		slack.OptionDebug(true),
+		slack.OptionDebug(config.Debug),
 	)
-	socketMode := socketmode.New(client, socketmode.OptionDebug(true))
+	socketMode := socketmode.New(client, socketmode.OptionDebug(config.Debug))
 
 	logger := log.New(os.Stdout, "[SLACK-CONNECTOR] ", log.LstdFlags|log.Lshortfile)
 
@@ -131,6 +132,37 @@ func (c *Connector) handleEvent(ctx context.Context, event slackevents.EventsAPI
 func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.MessageEvent) error {
 	// Skip messages from bots to avoid loops
 	if event.BotID != "" || event.SubType == "bot_message" {
+		c.logger.Printf("Skipping bot message (BotID: %s, SubType: %s)", event.BotID, event.SubType)
+		return nil
+	}
+
+	// Skip system/automated message subtypes
+	systemSubtypes := map[string]bool{
+		// Channel activity
+		"channel_join": true, "channel_leave": true, "channel_topic": true,
+		"channel_purpose": true, "channel_name": true, "channel_archive": true,
+		"channel_unarchive": true, "channel_convert_to_private": true,
+		"channel_convert_to_public": true, "channel_posting_permissions": true,
+		// Group activity
+		"group_join": true, "group_leave": true, "group_topic": true,
+		"group_purpose": true, "group_name": true, "group_archive": true,
+		"group_unarchive": true,
+		// File operations
+		"file_share": true, "file_comment": true, "file_mention": true,
+		// Message metadata (hidden events)
+		"message_changed": true, "message_deleted": true, "message_replied": true,
+		// Other system messages
+		"pinned_item": true, "unpinned_item": true, "reminder_add": true,
+		"ekm_access_denied": true, "assistant_app_thread": true,
+	}
+	if systemSubtypes[event.SubType] {
+		c.logger.Printf("Skipping system message (SubType: %s)", event.SubType)
+		return nil
+	}
+
+	// Skip messages without a user ID (additional safety check for system messages)
+	if event.User == "" {
+		c.logger.Printf("Skipping message without user ID (SubType: %s)", event.SubType)
 		return nil
 	}
 
@@ -146,18 +178,19 @@ func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.M
 		UserID:    event.User,
 		SessionID: fmt.Sprintf("slack_%s_%s", event.User, event.Channel),
 		Message:   event.Text,
-	})
+	}, c)
 
 	if err != nil {
 		c.logger.Printf("Error from executor: %v", err)
-		// Send error message to user
-		_, _, err = c.client.PostMessage(event.Channel, slack.MsgOptionText("Sorry, I encountered an error processing your message.", false))
+		_, _, err = c.client.PostMessage(event.Channel,
+			slack.MsgOptionText("Sorry, I encountered an error processing your message.", false))
 		return err
 	}
 
 	// Send response back to Slack
 	if response.Text != "" {
-		_, _, err = c.client.PostMessage(event.Channel, slack.MsgOptionText(response.Text, false))
+		_, _, err = c.client.PostMessage(event.Channel,
+			slack.MsgOptionText(response.Text, false))
 		if err != nil {
 			c.logger.Printf("Error sending message to Slack: %v", err)
 			return err
@@ -179,7 +212,7 @@ func (c *Connector) handleAppMentionEvent(ctx context.Context, event *slackevent
 		UserID:    event.User,
 		SessionID: fmt.Sprintf("slack_%s_%s", event.User, event.Channel),
 		Message:   cleanText,
-	})
+	}, c)
 
 	if err != nil {
 		c.logger.Printf("Error from executor: %v", err)
@@ -233,4 +266,48 @@ func (c *Connector) GetBotInfo() (*slack.Bot, error) {
 	}
 
 	return c.client.GetBotInfo(slack.GetBotInfoParameters{Bot: auth.BotID})
+}
+
+// PlatformName returns the platform name
+func (c *Connector) PlatformName() string {
+	return "Slack"
+}
+
+// FormattingGuide returns Slack-specific formatting instructions
+func (c *Connector) FormattingGuide() string {
+	return `# Slack Formatting Guide
+
+## Text Formatting
+- *Bold text*: Wrap text in asterisks (e.g., *bold*)
+- _Italic text_: Wrap text in underscores (e.g., _italic_)
+- ~Strikethrough~: Wrap text in tildes (e.g., ~strikethrough~)
+- Inline code: Wrap text in backticks (e.g., ` + "`code`" + `)
+
+## Code Blocks
+Use triple backticks for multi-line code blocks:
+` + "```" + `
+code block
+` + "```" + `
+
+## Lists
+- Use hyphens or asterisks for bullet points
+- Lists must have blank lines before and after
+- Each item on a new line
+
+## Links
+- Inline links: <https://example.com|Link Text>
+- Auto-links: <https://example.com>
+
+## Mentions
+- User mentions: <@USER_ID>
+- Channel mentions: <#CHANNEL_ID>
+
+## Quotes
+Use > at the start of a line for block quotes:
+> This is a quote
+
+## Important Notes
+- Slack uses mrkdwn (a simplified Markdown variant), not full Markdown
+- HTML tags are not supported and will be displayed as plain text
+- Emoji can be used with :emoji_name: syntax`
 }

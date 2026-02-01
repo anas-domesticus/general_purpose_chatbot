@@ -3,24 +3,7 @@ package agents
 import (
 	"log"
 	"os"
-
-	"github.com/lewisedginton/general_purpose_chatbot/internal/config"
-	"google.golang.org/adk/agent"
-	"google.golang.org/adk/model"
 )
-
-// NewLoader creates an agent loader with the provided model and MCP configuration
-func NewLoader(llmModel model.LLM, mcpConfig config.MCPConfig) agent.Loader {
-	// Create the Slack agent with MCP configuration
-	slackAgent, err := NewSlackAgent(llmModel, mcpConfig)
-	if err != nil {
-		log.Fatalf("Failed to create slack agent: %v", err)
-	}
-
-	// For now, we return a single agent loader
-	// This can be extended to support multiple agents
-	return agent.NewSingleLoader(slackAgent)
-}
 
 // loadInstructionFile loads agent instructions from a file in the current working directory
 func loadInstructionFile(filename string) string {
@@ -38,7 +21,7 @@ func loadInstructionFile(filename string) string {
 
 // getDefaultInstructions returns fallback instructions if system.md is not found
 func getDefaultInstructions() string {
-	return `You are a helpful AI assistant powered by Claude.
+	return `You are a helpful AI assistant.
 
 You can help with:
 - General questions and conversation

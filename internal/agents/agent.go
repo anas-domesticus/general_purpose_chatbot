@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"fmt"
 	"log"
 	"os/exec"
 
@@ -14,33 +15,46 @@ import (
 	"google.golang.org/adk/tool/mcptoolset"
 )
 
-// NewSlackAgent creates a new Slack workspace agent with Claude model and MCP configuration
-func NewSlackAgent(llmModel model.LLM, mcpConfig config.MCPConfig) (agent.Agent, error) {
+// PlatformSpecificGuidanceProvider defines an interface for platform-specific guidance
+type PlatformSpecificGuidanceProvider interface {
+	PlatformName() string    // Name of the platform (e.g., "Slack", "Telegram")
+	FormattingGuide() string // Platform-specific formatting instructions
+}
+
+// AgentConfig holds configuration for creating a chat agent
+type AgentConfig struct {
+	Name        string // Agent name (e.g., "slack_assistant", "telegram_assistant")
+	Platform    string // Platform name for description (e.g., "Slack", "Telegram")
+	Description string // Agent description
+}
+
+// NewChatAgent creates a factory function that returns a new chat agent with Claude model and MCP configuration
+func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig AgentConfig) (func(PlatformSpecificGuidanceProvider) (agent.Agent, error), error) {
 	// Load agent instructions from system.md in current directory
 	instructions := loadInstructionFile("system.md")
 
-	// Create echo tool
-	echoTool, err := functiontool.New(functiontool.Config{
-		Name:        "echo",
-		Description: "Echo back text for testing the agent functionality",
-	}, handleEcho)
+	// Create agent info tool with platform-specific handler
+	agentInfoTool, err := functiontool.New(functiontool.Config{
+		Name:        "get_agent_info",
+		Description: "Get information about the current agent and its capabilities",
+	}, createAgentInfoHandler(agentConfig, llmModel))
 	if err != nil {
 		return nil, err
 	}
 
-	// Create agent info tool
-	agentInfoTool, err := functiontool.New(functiontool.Config{
-		Name:        "get_agent_info",
-		Description: "Get information about the current agent and its capabilities",
-	}, handleGetAgentInfo)
+	// Create HTTP request tool
+	httpRequestTool, err := functiontool.New(functiontool.Config{
+		Name:        "http_request",
+		Description: "Make arbitrary HTTP requests to external APIs and services",
+	}, handleHTTPRequest)
 	if err != nil {
 		return nil, err
 	}
 
 	// Start with basic tools
 	tools := []tool.Tool{
-		echoTool,
 		agentInfoTool,
+		httpRequestTool,
 	}
 
 	// Create MCP toolsets if MCP is enabled
@@ -56,71 +70,46 @@ func NewSlackAgent(llmModel model.LLM, mcpConfig config.MCPConfig) (agent.Agent,
 		}
 	}
 
-	// Create the LLM agent with basic tools and MCP toolsets
-	slackAgent, err := llmagent.New(llmagent.Config{
-		Name:        "slack_assistant",
-		Model:       llmModel,
-		Description: "Claude-powered assistant for Slack workspace interactions with MCP capabilities",
-		Instruction: instructions,
-		Tools:       tools,
-		Toolsets:    toolsets,
-	})
+	// Return a factory function that creates the agent
+	return func(guidanceProvider PlatformSpecificGuidanceProvider) (agent.Agent, error) {
+		// Start with base instructions
+		agentInstructions := instructions
 
-	if err != nil {
-		return nil, err
-	}
+		// Append platform-specific guidance if provided
+		if guidanceProvider != nil {
+			platformName := guidanceProvider.PlatformName()
+			formattingGuide := guidanceProvider.FormattingGuide()
 
-	return slackAgent, nil
-}
+			if platformName != "" || formattingGuide != "" {
+				platformGuidance := "\n\n## Platform Context\n"
 
-// EchoArgs represents the arguments for the echo tool
-type EchoArgs struct {
-	Text string `json:"text" jsonschema:"required" jsonschema_description:"Text to echo back"`
-}
+				if platformName != "" {
+					platformGuidance += fmt.Sprintf("This conversation is happening on %s.\n", platformName)
+				}
 
-// EchoResult represents the result of the echo tool
-type EchoResult struct {
-	EchoedText string `json:"echoed_text"`
-	Message    string `json:"message"`
-}
+				if formattingGuide != "" {
+					platformGuidance += "\n" + formattingGuide
+				}
 
-// handleEcho is the echo tool handler
-func handleEcho(ctx tool.Context, args EchoArgs) (EchoResult, error) {
-	return EchoResult{
-		EchoedText: args.Text,
-		Message:    "Echo: " + args.Text,
-	}, nil
-}
+				agentInstructions += platformGuidance
+			}
+		}
 
-// AgentInfoArgs represents the arguments for the agent info tool (no args needed)
-type AgentInfoArgs struct{}
+		// Create the LLM agent with basic tools and MCP toolsets
+		chatAgent, err := llmagent.New(llmagent.Config{
+			Name:        agentConfig.Name,
+			Model:       llmModel,
+			Description: agentConfig.Description,
+			Instruction: agentInstructions,
+			Tools:       tools,
+			Toolsets:    toolsets,
+		})
 
-// AgentInfoResult represents the result of the agent info tool
-type AgentInfoResult struct {
-	AgentName    string   `json:"agent_name"`
-	Model        string   `json:"model"`
-	Description  string   `json:"description"`
-	Capabilities []string `json:"capabilities"`
-	Status       string   `json:"status"`
-	Framework    string   `json:"framework"`
-}
+		if err != nil {
+			return nil, err
+		}
 
-// handleGetAgentInfo is the agent info tool handler
-func handleGetAgentInfo(ctx tool.Context, args AgentInfoArgs) (AgentInfoResult, error) {
-	return AgentInfoResult{
-		AgentName:   "slack_assistant",
-		Model:       "claude-sonnet-4-5-20250929",
-		Description: "Claude-powered assistant for Slack workspace interactions",
-		Capabilities: []string{
-			"General conversation and Q&A",
-			"Code analysis and programming help",
-			"Technical discussions",
-			"Creative writing assistance",
-			"Problem solving and reasoning",
-			"Echo functionality for testing",
-		},
-		Status:    "operational",
-		Framework: "Google ADK Go v0.3.0",
+		return chatAgent, nil
 	}, nil
 }
 
