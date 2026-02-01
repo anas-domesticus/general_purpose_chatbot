@@ -65,7 +65,7 @@ func main() {
 	}
 
 	// Create executor
-	exec, err := executor.NewExecutor(slackAgent)
+	exec, err := executor.NewExecutor(slackAgent, "chatbot")
 	if err != nil {
 		log.Error("Failed to create executor", logger.ErrorField(err))
 		os.Exit(1)

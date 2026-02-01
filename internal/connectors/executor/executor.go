@@ -17,15 +17,13 @@ type Executor struct {
 	appName        string
 }
 
-func NewExecutor(agent agent.Agent) (*Executor, error) {
+func NewExecutor(agent agent.Agent, appName string) (*Executor, error) {
 	if agent == nil {
 		return nil, fmt.Errorf("agent cannot be nil")
 	}
 
 	// Create in-memory session service
 	sessionService := session.InMemoryService()
-
-	appName := "slack_chatbot"
 
 	// Create runner
 	r, err := runner.New(runner.Config{
