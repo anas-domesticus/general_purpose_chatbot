@@ -9,13 +9,17 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/agents"
 	appconfig "github.com/lewisedginton/general_purpose_chatbot/internal/config"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/executor"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/slack"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/telegram"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/models/anthropic"
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/config"
+	intsession "github.com/lewisedginton/general_purpose_chatbot/internal/session"
+	pkgconfig "github.com/lewisedginton/general_purpose_chatbot/pkg/config"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"google.golang.org/adk/session"
 )
@@ -23,7 +27,7 @@ import (
 func main() {
 	// Load configuration
 	cfg := &appconfig.AppConfig{}
-	if err := config.GetConfigFromEnvVars(cfg); err != nil {
+	if err := pkgconfig.GetConfigFromEnvVars(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load configuration: %v\n", err)
 		os.Exit(1)
 	}
@@ -66,9 +70,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create in-memory session service
-	// TODO: Make this configurable
-	sessionService := session.InMemoryService()
+	// Create session service based on configuration
+	sessionService, err := createSessionService(ctx, &cfg.Session, log)
+	if err != nil {
+		log.Error("Failed to create session service", logger.ErrorField(err))
+		os.Exit(1)
+	}
 
 	// Create executor with agent factory (shared across all platforms)
 	// Note: nil formatting provider for now - will be platform-specific in the future
@@ -176,6 +183,75 @@ func startTelegramConnector(ctx context.Context, cfg *appconfig.AppConfig, exec 
 	}
 
 	return nil
+}
+
+// createSessionService creates a session service based on configuration
+func createSessionService(ctx context.Context, cfg *appconfig.SessionConfig, log logger.Logger) (session.Service, error) {
+	switch cfg.Backend {
+	case "local":
+		log.Info("Using local file-based session storage", logger.StringField("directory", cfg.LocalDir))
+
+		// Ensure directory exists
+		if err := os.MkdirAll(cfg.LocalDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create session directory: %w", err)
+		}
+
+		return intsession.NewSessionService(intsession.StorageConfig{
+			Backend: "local",
+			Local:   intsession.LocalConfig{BaseDir: cfg.LocalDir},
+			Logger:  log,
+		})
+
+	case "s3":
+		log.Info("Using S3-based session storage",
+			logger.StringField("bucket", cfg.S3Bucket),
+			logger.StringField("prefix", cfg.S3Prefix),
+			logger.StringField("region", cfg.S3Region))
+
+		if cfg.S3Bucket == "" {
+			return nil, fmt.Errorf("S3 bucket is required when using S3 session storage")
+		}
+
+		// Load AWS configuration
+		var awsCfg aws.Config
+		var err error
+
+		configOptions := []func(*awsconfig.LoadOptions) error{}
+
+		if cfg.S3Profile != "" {
+			configOptions = append(configOptions, awsconfig.WithSharedConfigProfile(cfg.S3Profile))
+		}
+
+		if cfg.S3Region != "" {
+			configOptions = append(configOptions, awsconfig.WithRegion(cfg.S3Region))
+		}
+
+		awsCfg, err = awsconfig.LoadDefaultConfig(ctx, configOptions...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load AWS config: %w", err)
+		}
+
+		// Create S3 client
+		s3Client := s3.NewFromConfig(awsCfg)
+		awsS3Client := intsession.NewAWSS3Client(s3Client)
+
+		return intsession.NewSessionService(intsession.StorageConfig{
+			Backend: "s3",
+			S3: intsession.S3Config{
+				Bucket:   cfg.S3Bucket,
+				Prefix:   cfg.S3Prefix,
+				S3Client: awsS3Client,
+			},
+			Logger: log,
+		})
+
+	case "memory":
+		log.Info("Using in-memory session storage")
+		return session.InMemoryService(), nil
+
+	default:
+		return nil, fmt.Errorf("unsupported session backend: %s (must be 'local', 's3', or 'memory')", cfg.Backend)
+	}
 }
 
 // setupGracefulShutdown sets up signal handling for graceful shutdown

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"google.golang.org/adk/session"
 )
 
@@ -16,6 +17,7 @@ type JSONSessionService struct {
 	fileProvider FileProvider
 	mutex        sync.RWMutex
 	cache        map[string]*SessionData // In-memory cache for performance
+	log          logger.Logger           // Logger for debugging
 }
 
 // SessionData represents the structure of session data stored in JSON
@@ -30,10 +32,11 @@ type SessionData struct {
 }
 
 // NewJSONSessionService creates a new JSON-based session service
-func NewJSONSessionService(fileProvider FileProvider) *JSONSessionService {
+func NewJSONSessionService(fileProvider FileProvider, log logger.Logger) *JSONSessionService {
 	return &JSONSessionService{
 		fileProvider: fileProvider,
 		cache:        make(map[string]*SessionData),
+		log:          log,
 	}
 }
 
@@ -122,11 +125,14 @@ func (s *JSONSessionService) Get(ctx context.Context, req *session.GetRequest) (
 
 	// Try cache first
 	if sessionData, exists := s.cache[sessionKey]; exists {
+		s.log.Debug("Session cache hit", logger.StringField("session_key", sessionKey))
 		adkSession := s.sessionDataToADKSession(sessionData)
 		return &session.GetResponse{
 			Session: adkSession,
 		}, nil
 	}
+
+	s.log.Debug("Session cache miss, loading from storage", logger.StringField("session_key", sessionKey))
 
 	// Load from file
 	sessionData, err := s.loadSession(ctx, sessionKey)
@@ -224,6 +230,7 @@ func (s *JSONSessionService) AppendEvent(ctx context.Context, sess session.Sessi
 	}
 
 	sessionKey := s.getSessionKey(sess.AppName(), sess.UserID(), sess.ID())
+	s.log.Debug("Appending event to session", logger.StringField("session_key", sessionKey))
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -282,32 +289,58 @@ func (s *JSONSessionService) getSessionKey(appName, userID, sessionID string) st
 
 // loadSession loads session data from file storage
 func (s *JSONSessionService) loadSession(ctx context.Context, sessionKey string) (*SessionData, error) {
+	start := time.Now()
 	data, err := s.fileProvider.Read(ctx, sessionKey)
 	if err != nil {
+		s.log.Warn("Failed to read session from storage",
+			logger.StringField("session_key", sessionKey),
+			logger.ErrorField(err))
 		return nil, err
 	}
 
 	var sessionData SessionData
 	if err := json.Unmarshal(data, &sessionData); err != nil {
+		s.log.Error("Failed to unmarshal session data",
+			logger.StringField("session_key", sessionKey),
+			logger.ErrorField(err))
 		return nil, fmt.Errorf("failed to unmarshal session data: %w", err)
 	}
+
+	s.log.Info("Loaded session from storage",
+		logger.StringField("session_key", sessionKey),
+		logger.IntField("events_count", len(sessionData.Events)),
+		logger.DurationField("duration", time.Since(start)))
 
 	return &sessionData, nil
 }
 
 // saveSession saves session data to file storage
 func (s *JSONSessionService) saveSession(ctx context.Context, sessionKey string, sessionData *SessionData) error {
+	start := time.Now()
+
 	// Update timestamp
 	sessionData.UpdatedAt = time.Now()
 
 	data, err := json.MarshalIndent(sessionData, "", "  ")
 	if err != nil {
+		s.log.Error("Failed to marshal session data",
+			logger.StringField("session_key", sessionKey),
+			logger.ErrorField(err))
 		return fmt.Errorf("failed to marshal session data: %w", err)
 	}
 
 	if err := s.fileProvider.Write(ctx, sessionKey, data); err != nil {
+		s.log.Error("Failed to write session to storage",
+			logger.StringField("session_key", sessionKey),
+			logger.ErrorField(err))
 		return fmt.Errorf("failed to write session file: %w", err)
 	}
+
+	s.log.Info("Saved session to storage",
+		logger.StringField("session_key", sessionKey),
+		logger.IntField("events_count", len(sessionData.Events)),
+		logger.IntField("size_bytes", len(data)),
+		logger.DurationField("duration", time.Since(start)))
 
 	return nil
 }

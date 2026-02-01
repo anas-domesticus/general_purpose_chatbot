@@ -44,6 +44,9 @@ type AppConfig struct {
 
 	// Telegram configuration
 	Telegram TelegramConfig `yaml:"telegram,inline"`
+
+	// Session storage configuration
+	Session SessionConfig `yaml:"session,inline"`
 }
 
 // SlackConfig holds Slack-specific configuration
@@ -67,6 +70,16 @@ type TelegramConfig struct {
 // Enabled returns true if Telegram is configured with a bot token
 func (c *TelegramConfig) Enabled() bool {
 	return c.BotToken != ""
+}
+
+// SessionConfig holds session storage configuration
+type SessionConfig struct {
+	Backend   string `env:"SESSION_BACKEND" yaml:"backend" default:"memory"`         // "local", "s3", or "memory"
+	LocalDir  string `env:"SESSION_LOCAL_DIR" yaml:"local_dir" default:"./sessions"` // Base directory for local storage
+	S3Bucket  string `env:"SESSION_S3_BUCKET" yaml:"s3_bucket"`                      // S3 bucket name
+	S3Prefix  string `env:"SESSION_S3_PREFIX" yaml:"s3_prefix" default:"sessions"`   // S3 object key prefix
+	S3Region  string `env:"SESSION_S3_REGION" yaml:"s3_region"`                      // AWS region
+	S3Profile string `env:"SESSION_S3_PROFILE" yaml:"s3_profile"`                    // AWS profile name (optional)
 }
 
 // AnthropicConfig holds Anthropic-specific configuration
@@ -369,5 +382,12 @@ func (c *AppConfig) LogConfig(log logger.Logger) {
 	// Log Telegram configuration
 	if c.Telegram.Enabled() {
 		log.Info("Telegram integration enabled")
+	}
+
+	// Log session storage configuration
+	if c.Session.Backend != "" && c.Session.Backend != "memory" {
+		log.Info("Session storage configured",
+			logger.StringField("backend", c.Session.Backend),
+		)
 	}
 }

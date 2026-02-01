@@ -7,10 +7,50 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/adk/session"
 )
+
+// testLogger creates a simple logger for tests
+func testLogger() logger.Logger {
+	return logger.NewLogger(logger.Config{
+		Level:  logger.ErrorLevel, // Only show errors in tests
+		Format: "text",
+	})
+}
+
+// Test helper functions to match the old convenience functions
+func NewLocalJSONSessionService(baseDir string) session.Service {
+	log := testLogger()
+	service, err := NewSessionService(StorageConfig{
+		Backend: "local",
+		Local:   LocalConfig{BaseDir: baseDir},
+		Logger:  log,
+	})
+	if err != nil {
+		panic(err)
+	}
+	return service
+}
+
+func NewS3JSONSessionService(bucket, prefix string, s3Client S3Client) session.Service {
+	log := testLogger()
+	service, err := NewSessionService(StorageConfig{
+		Backend: "s3",
+		S3: S3Config{
+			Bucket:   bucket,
+			Prefix:   prefix,
+			S3Client: s3Client,
+		},
+		Logger: log,
+	})
+	if err != nil {
+		panic(err)
+	}
+	return service
+}
 
 func TestJSONSessionService_Create(t *testing.T) {
 	// Create temporary directory for test
@@ -395,10 +435,13 @@ func TestNewSessionService(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
 
+	log := testLogger()
+
 	// Test local storage configuration
 	service, err := NewSessionService(StorageConfig{
 		Backend: "local",
 		Local:   LocalConfig{BaseDir: tmpDir},
+		Logger:  log,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, service)
@@ -412,6 +455,7 @@ func TestNewSessionService(t *testing.T) {
 			Prefix:   "prefix",
 			S3Client: s3Client,
 		},
+		Logger: log,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, service)
@@ -419,6 +463,7 @@ func TestNewSessionService(t *testing.T) {
 	// Test invalid backend
 	_, err = NewSessionService(StorageConfig{
 		Backend: "invalid",
+		Logger:  log,
 	})
 	assert.Error(t, err)
 
@@ -426,6 +471,7 @@ func TestNewSessionService(t *testing.T) {
 	_, err = NewSessionService(StorageConfig{
 		Backend: "local",
 		Local:   LocalConfig{},
+		Logger:  log,
 	})
 	assert.Error(t, err)
 
@@ -433,6 +479,7 @@ func TestNewSessionService(t *testing.T) {
 	_, err = NewSessionService(StorageConfig{
 		Backend: "s3",
 		S3:      S3Config{S3Client: s3Client},
+		Logger:  log,
 	})
 	assert.Error(t, err)
 
@@ -440,6 +487,14 @@ func TestNewSessionService(t *testing.T) {
 	_, err = NewSessionService(StorageConfig{
 		Backend: "s3",
 		S3:      S3Config{Bucket: "bucket"},
+		Logger:  log,
+	})
+	assert.Error(t, err)
+
+	// Test missing logger
+	_, err = NewSessionService(StorageConfig{
+		Backend: "local",
+		Local:   LocalConfig{BaseDir: tmpDir},
 	})
 	assert.Error(t, err)
 }

@@ -3,14 +3,16 @@ package session
 import (
 	"fmt"
 
+	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"google.golang.org/adk/session"
 )
 
 // StorageConfig holds configuration for session storage backend
 type StorageConfig struct {
-	Backend string      // "local", "s3", or "custom"
-	Local   LocalConfig // Configuration for local file storage
-	S3      S3Config    // Configuration for S3 storage
+	Backend string        // "local", "s3", or "custom"
+	Local   LocalConfig   // Configuration for local file storage
+	S3      S3Config      // Configuration for S3 storage
+	Logger  logger.Logger // Logger for session operations
 }
 
 // LocalConfig represents configuration for local file storage
@@ -27,6 +29,10 @@ type S3Config struct {
 
 // NewSessionService creates a JSON session service based on the storage configuration
 func NewSessionService(config StorageConfig) (session.Service, error) {
+	if config.Logger == nil {
+		return nil, fmt.Errorf("logger is required")
+	}
+
 	var fileProvider FileProvider
 
 	switch config.Backend {
@@ -52,43 +58,16 @@ func NewSessionService(config StorageConfig) (session.Service, error) {
 		return nil, fmt.Errorf("unsupported storage backend: %s (must be 'local', 's3', or 'custom')", config.Backend)
 	}
 
-	return NewJSONSessionService(fileProvider), nil
+	return NewJSONSessionService(fileProvider, config.Logger), nil
 }
 
 // NewSessionServiceWithProvider creates a JSON session service with a custom file provider
-func NewSessionServiceWithProvider(provider FileProvider) session.Service {
+func NewSessionServiceWithProvider(provider FileProvider, log logger.Logger) session.Service {
 	if provider == nil {
 		panic("file provider cannot be nil")
 	}
-	return NewJSONSessionService(provider)
-}
-
-// Convenience functions for common configurations
-
-// NewLocalJSONSessionService creates a JSON session service with local file storage
-func NewLocalJSONSessionService(baseDir string) session.Service {
-	service, err := NewSessionService(StorageConfig{
-		Backend: "local",
-		Local:   LocalConfig{BaseDir: baseDir},
-	})
-	if err != nil {
-		panic(fmt.Sprintf("Failed to create local JSON session service: %v", err))
+	if log == nil {
+		panic("logger cannot be nil")
 	}
-	return service
-}
-
-// NewS3JSONSessionService creates a JSON session service with S3 storage
-func NewS3JSONSessionService(bucket, prefix string, s3Client S3Client) session.Service {
-	service, err := NewSessionService(StorageConfig{
-		Backend: "s3",
-		S3: S3Config{
-			Bucket:   bucket,
-			Prefix:   prefix,
-			S3Client: s3Client,
-		},
-	})
-	if err != nil {
-		panic(fmt.Sprintf("Failed to create S3 JSON session service: %v", err))
-	}
-	return service
+	return NewJSONSessionService(provider, log)
 }
