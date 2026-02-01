@@ -37,7 +37,7 @@ func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig Ag
 	agentInfoTool, err := functiontool.New(functiontool.Config{
 		Name:        "get_agent_info",
 		Description: "Get information about the current agent and its capabilities",
-	}, createAgentInfoHandler(agentConfig))
+	}, createAgentInfoHandler(agentConfig, llmModel))
 	if err != nil {
 		return nil, err
 	}

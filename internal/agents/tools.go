@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"google.golang.org/adk/model"
 	"google.golang.org/adk/tool"
 )
 
@@ -102,12 +103,12 @@ type AgentInfoResult struct {
 }
 
 // createAgentInfoHandler creates a platform-specific agent info handler
-func createAgentInfoHandler(agentConfig AgentConfig) func(tool.Context, AgentInfoArgs) (AgentInfoResult, error) {
+func createAgentInfoHandler(agentConfig AgentConfig, llmModel model.LLM) func(tool.Context, AgentInfoArgs) (AgentInfoResult, error) {
 	return func(ctx tool.Context, args AgentInfoArgs) (AgentInfoResult, error) {
 		return AgentInfoResult{
 			AgentName:   agentConfig.Name,
 			Platform:    agentConfig.Platform,
-			Model:       "claude-sonnet-4-5-20250929",
+			Model:       llmModel.Name(),
 			Description: agentConfig.Description,
 			Capabilities: []string{
 				"General conversation and Q&A",
