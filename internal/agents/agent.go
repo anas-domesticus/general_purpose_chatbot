@@ -2,6 +2,7 @@ package agents
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -18,9 +19,10 @@ import (
 	"google.golang.org/adk/tool/mcptoolset"
 )
 
-// FormattingProvider defines an interface for platform-specific formatting guides
-type FormattingProvider interface {
-	FormattingGuide() string
+// PlatformSpecificGuidanceProvider defines an interface for platform-specific guidance
+type PlatformSpecificGuidanceProvider interface {
+	PlatformName() string    // Name of the platform (e.g., "Slack", "Telegram")
+	FormattingGuide() string // Platform-specific formatting instructions
 }
 
 // AgentConfig holds configuration for creating a chat agent
@@ -31,7 +33,7 @@ type AgentConfig struct {
 }
 
 // NewChatAgent creates a factory function that returns a new chat agent with Claude model and MCP configuration
-func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig AgentConfig) (func(FormattingProvider) (agent.Agent, error), error) {
+func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig AgentConfig) (func(PlatformSpecificGuidanceProvider) (agent.Agent, error), error) {
 	// Load agent instructions from system.md in current directory
 	instructions := loadInstructionFile("system.md")
 
@@ -73,15 +75,27 @@ func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig Ag
 	}
 
 	// Return a factory function that creates the agent
-	return func(formattingProvider FormattingProvider) (agent.Agent, error) {
+	return func(guidanceProvider PlatformSpecificGuidanceProvider) (agent.Agent, error) {
 		// Start with base instructions
 		agentInstructions := instructions
 
-		// Append platform-specific formatting guide if provided
-		if formattingProvider != nil {
-			formattingGuide := formattingProvider.FormattingGuide()
-			if formattingGuide != "" {
-				agentInstructions += "\n\n" + formattingGuide
+		// Append platform-specific guidance if provided
+		if guidanceProvider != nil {
+			platformName := guidanceProvider.PlatformName()
+			formattingGuide := guidanceProvider.FormattingGuide()
+
+			if platformName != "" || formattingGuide != "" {
+				platformGuidance := "\n\n## Platform Context\n"
+
+				if platformName != "" {
+					platformGuidance += fmt.Sprintf("This conversation is happening on %s.\n", platformName)
+				}
+
+				if formattingGuide != "" {
+					platformGuidance += "\n" + formattingGuide
+				}
+
+				agentInstructions += platformGuidance
 			}
 		}
 

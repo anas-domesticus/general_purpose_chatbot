@@ -268,6 +268,11 @@ func (c *Connector) GetBotInfo() (*slack.Bot, error) {
 	return c.client.GetBotInfo(slack.GetBotInfoParameters{Bot: auth.BotID})
 }
 
+// PlatformName returns the platform name
+func (c *Connector) PlatformName() string {
+	return "Slack"
+}
+
 // FormattingGuide returns Slack-specific formatting instructions
 func (c *Connector) FormattingGuide() string {
 	return `# Slack Formatting Guide

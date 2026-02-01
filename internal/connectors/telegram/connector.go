@@ -140,6 +140,11 @@ func (c *Connector) GetBotInfo(ctx context.Context) (*models.User, error) {
 	return c.bot.GetMe(ctx)
 }
 
+// PlatformName returns the platform name
+func (c *Connector) PlatformName() string {
+	return "Telegram"
+}
+
 // FormattingGuide returns Telegram-specific formatting instructions
 func (c *Connector) FormattingGuide() string {
 	return `# Telegram Formatting Guide
