@@ -63,6 +63,19 @@ func (c *ClaudeModel) generateContentNonStreaming(ctx context.Context, req *mode
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
 
+	// IMPORTANT: Extract system instruction from Config.SystemInstruction
+	// This is where ADK places the llmagent's Instruction field
+	if req.Config != nil && req.Config.SystemInstruction != nil {
+		for _, part := range req.Config.SystemInstruction.Parts {
+			if part != nil && part.Text != "" {
+				if systemPrompt != "" {
+					systemPrompt += "\n\n"
+				}
+				systemPrompt += part.Text
+			}
+		}
+	}
+
 	// Determine max tokens - default to 4096 if not specified
 	maxTokens := int64(4096)
 	if req.Config != nil && req.Config.MaxOutputTokens > 0 {
