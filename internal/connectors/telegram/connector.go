@@ -100,7 +100,7 @@ func (c *Connector) handleUpdate(ctx context.Context, b *bot.Bot, update *models
 		UserID:    fmt.Sprintf("%d", update.Message.From.ID),
 		SessionID: sessionID,
 		Message:   update.Message.Text,
-	})
+	}, c)
 
 	if err != nil {
 		c.logger.Printf("Error from executor: %v", err)

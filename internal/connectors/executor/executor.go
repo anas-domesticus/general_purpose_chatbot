@@ -5,41 +5,35 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/lewisedginton/general_purpose_chatbot/internal/agents"
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/runner"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
 )
 
+// AgentFactory is a function that creates an agent instance with a formatting provider
+type AgentFactory func(agents.FormattingProvider) (agent.Agent, error)
+
 type Executor struct {
-	runner         *runner.Runner
 	sessionService session.Service
 	appName        string
+	agentFactory   AgentFactory
 }
 
-func NewExecutor(agent agent.Agent, appName string, sessionService session.Service) (*Executor, error) {
-	if agent == nil {
-		return nil, fmt.Errorf("agent cannot be nil")
-	}
-
-	// Create runner
-	r, err := runner.New(runner.Config{
-		AppName:        appName,
-		Agent:          agent,
-		SessionService: sessionService,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create runner: %w", err)
+func NewExecutor(agentFactory AgentFactory, appName string, sessionService session.Service) (*Executor, error) {
+	if agentFactory == nil {
+		return nil, fmt.Errorf("agent factory cannot be nil")
 	}
 
 	return &Executor{
-		runner:         r,
 		sessionService: sessionService,
 		appName:        appName,
+		agentFactory:   agentFactory,
 	}, nil
 }
 
-func (e *Executor) Execute(ctx context.Context, req MessageRequest) (MessageResponse, error) {
+func (e *Executor) Execute(ctx context.Context, req MessageRequest, formattingProvider agents.FormattingProvider) (MessageResponse, error) {
 	// Validate input
 	if req.UserID == "" {
 		return MessageResponse{}, fmt.Errorf("userID is required")
@@ -77,8 +71,23 @@ func (e *Executor) Execute(ctx context.Context, req MessageRequest) (MessageResp
 		StreamingMode: agent.StreamingModeNone,
 	}
 
+	agentInstance, err := e.agentFactory(formattingProvider)
+	if err != nil {
+		return MessageResponse{}, fmt.Errorf("failed to create agent instance: %w", err)
+	}
+
+	// Create runner
+	r, err := runner.New(runner.Config{
+		AppName:        e.appName,
+		SessionService: e.sessionService,
+		Agent:          agentInstance,
+	})
+	if err != nil {
+		return MessageResponse{}, fmt.Errorf("failed to create runner: %w", err)
+	}
+
 	// Execute via runner
-	eventIterator := e.runner.Run(ctx, req.UserID, req.SessionID, content, runConfig)
+	eventIterator := r.Run(ctx, req.UserID, req.SessionID, content, runConfig)
 
 	// Iterate and collect response text
 	var responseText strings.Builder

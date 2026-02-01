@@ -178,7 +178,7 @@ func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.M
 		UserID:    event.User,
 		SessionID: fmt.Sprintf("slack_%s_%s", event.User, event.Channel),
 		Message:   event.Text,
-	})
+	}, c)
 
 	if err != nil {
 		c.logger.Printf("Error from executor: %v", err)
@@ -212,7 +212,7 @@ func (c *Connector) handleAppMentionEvent(ctx context.Context, event *slackevent
 		UserID:    event.User,
 		SessionID: fmt.Sprintf("slack_%s_%s", event.User, event.Channel),
 		Message:   cleanText,
-	})
+	}, c)
 
 	if err != nil {
 		c.logger.Printf("Error from executor: %v", err)

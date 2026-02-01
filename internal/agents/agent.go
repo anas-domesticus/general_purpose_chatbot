@@ -18,6 +18,11 @@ import (
 	"google.golang.org/adk/tool/mcptoolset"
 )
 
+// FormattingProvider defines an interface for platform-specific formatting guides
+type FormattingProvider interface {
+	FormattingGuide() string
+}
+
 // AgentConfig holds configuration for creating a chat agent
 type AgentConfig struct {
 	Name        string // Agent name (e.g., "slack_assistant", "telegram_assistant")
@@ -25,8 +30,8 @@ type AgentConfig struct {
 	Description string // Agent description
 }
 
-// NewChatAgent creates a new chat agent with Claude model and MCP configuration
-func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig AgentConfig) (agent.Agent, error) {
+// NewChatAgent creates a factory function that returns a new chat agent with Claude model and MCP configuration
+func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig AgentConfig) (func(FormattingProvider) (agent.Agent, error), error) {
 	// Load agent instructions from system.md in current directory
 	instructions := loadInstructionFile("system.md")
 
@@ -67,21 +72,35 @@ func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig Ag
 		}
 	}
 
-	// Create the LLM agent with basic tools and MCP toolsets
-	chatAgent, err := llmagent.New(llmagent.Config{
-		Name:        agentConfig.Name,
-		Model:       llmModel,
-		Description: agentConfig.Description,
-		Instruction: instructions,
-		Tools:       tools,
-		Toolsets:    toolsets,
-	})
+	// Return a factory function that creates the agent
+	return func(formattingProvider FormattingProvider) (agent.Agent, error) {
+		// Start with base instructions
+		agentInstructions := instructions
 
-	if err != nil {
-		return nil, err
-	}
+		// Append platform-specific formatting guide if provided
+		if formattingProvider != nil {
+			formattingGuide := formattingProvider.FormattingGuide()
+			if formattingGuide != "" {
+				agentInstructions += "\n\n" + formattingGuide
+			}
+		}
 
-	return chatAgent, nil
+		// Create the LLM agent with basic tools and MCP toolsets
+		chatAgent, err := llmagent.New(llmagent.Config{
+			Name:        agentConfig.Name,
+			Model:       llmModel,
+			Description: agentConfig.Description,
+			Instruction: agentInstructions,
+			Tools:       tools,
+			Toolsets:    toolsets,
+		})
+
+		if err != nil {
+			return nil, err
+		}
+
+		return chatAgent, nil
+	}, nil
 }
 
 // HTTPRequestArgs represents the arguments for the HTTP request tool

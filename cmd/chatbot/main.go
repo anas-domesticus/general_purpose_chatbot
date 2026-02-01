@@ -54,14 +54,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create generic chat agent (shared across all platforms)
-	chatAgent, err := agents.NewChatAgent(claudeModel, cfg.MCP, agents.AgentConfig{
+	// Create generic chat agent factory (shared across all platforms)
+	// Note: nil formatting provider for now - will be platform-specific in the future
+	chatAgentFactory, err := agents.NewChatAgent(claudeModel, cfg.MCP, agents.AgentConfig{
 		Name:        "chat_assistant",
 		Platform:    "Multi-Platform",
 		Description: "Claude-powered assistant with MCP capabilities",
 	})
 	if err != nil {
-		log.Error("Failed to create chat agent", logger.ErrorField(err))
+		log.Error("Failed to create chat agent factory", logger.ErrorField(err))
 		os.Exit(1)
 	}
 
@@ -69,8 +70,9 @@ func main() {
 	// TODO: Make this configurable
 	sessionService := session.InMemoryService()
 
-	// Create executor (shared across all platforms)
-	exec, err := executor.NewExecutor(chatAgent, "chatbot", sessionService)
+	// Create executor with agent factory (shared across all platforms)
+	// Note: nil formatting provider for now - will be platform-specific in the future
+	exec, err := executor.NewExecutor(chatAgentFactory, "chatbot", sessionService)
 	if err != nil {
 		log.Error("Failed to create executor", logger.ErrorField(err))
 		os.Exit(1)
