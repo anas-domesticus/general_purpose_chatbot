@@ -58,6 +58,7 @@ func (e *Executor) Execute(ctx context.Context, req MessageRequest) (MessageResp
 
 	// Ensure session exists, create if needed
 	_, err := e.sessionService.Get(ctx, &session.GetRequest{
+		AppName:   e.appName,
 		UserID:    req.UserID,
 		SessionID: req.SessionID,
 	})

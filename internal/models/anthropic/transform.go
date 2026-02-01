@@ -242,47 +242,65 @@ func mapStopReason(stopReason anthropic.StopReason) genai.FinishReason {
 }
 
 // transformToolsToAnthropic converts ADK tool definitions to Anthropic ToolUnionParam.
-// ADK tools come as map[string]any with "name", "description", and "inputSchema" fields.
+// ADK tools are stored as tool.Tool interface objects with a Declaration() method that
+// returns *genai.FunctionDeclaration containing the tool's schema.
 func transformToolsToAnthropic(tools map[string]any) ([]anthropic.ToolUnionParam, error) {
 	if tools == nil {
 		return nil, nil
 	}
 
-	// The tools map contains tool declarations as values
-	// Each tool declaration should have: name, description, inputSchema
+	// Define interface for tools that have declarations
+	// ADK tools implement this interface to expose their function declarations
+	type toolWithDeclaration interface {
+		Declaration() *genai.FunctionDeclaration
+	}
+
 	var anthropicTools []anthropic.ToolUnionParam
 
 	for _, toolDef := range tools {
-		toolMap, ok := toolDef.(map[string]any)
+		// Type assert to tool with declaration method
+		toolObj, ok := toolDef.(toolWithDeclaration)
 		if !ok {
 			continue
 		}
 
-		name, _ := toolMap["name"].(string)
+		// Get the function declaration
+		decl := toolObj.Declaration()
+		if decl == nil {
+			continue
+		}
+
+		// Extract name and description
+		name := decl.Name
 		if name == "" {
 			continue
 		}
 
-		description, _ := toolMap["description"].(string)
+		description := decl.Description
 
-		// Build the input schema
-		inputSchema := anthropic.ToolInputSchemaParam{}
+		// Build the input schema from ParametersJsonSchema
+		inputSchema := anthropic.ToolInputSchemaParam{
+			Type: "object",
+		}
 
-		if schema, ok := toolMap["inputSchema"].(map[string]any); ok {
-			// Extract properties
-			if props, ok := schema["properties"]; ok {
-				inputSchema.Properties = props
-			}
-
-			// Extract required fields
-			if req, ok := schema["required"].([]any); ok {
-				required := make([]string, 0, len(req))
-				for _, r := range req {
-					if s, ok := r.(string); ok {
-						required = append(required, s)
-					}
+		if decl.ParametersJsonSchema != nil {
+			// Type assert the schema to map[string]any
+			if schema, ok := decl.ParametersJsonSchema.(map[string]any); ok {
+				// Extract properties
+				if props, ok := schema["properties"]; ok {
+					inputSchema.Properties = props
 				}
-				inputSchema.Required = required
+
+				// Extract required fields
+				if req, ok := schema["required"].([]any); ok {
+					required := make([]string, 0, len(req))
+					for _, r := range req {
+						if s, ok := r.(string); ok {
+							required = append(required, s)
+						}
+					}
+					inputSchema.Required = required
+				}
 			}
 		}
 
