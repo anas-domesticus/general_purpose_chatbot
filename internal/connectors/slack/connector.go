@@ -150,14 +150,15 @@ func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.M
 
 	if err != nil {
 		c.logger.Printf("Error from executor: %v", err)
-		// Send error message to user
-		_, _, err = c.client.PostMessage(event.Channel, slack.MsgOptionText("Sorry, I encountered an error processing your message.", false))
+		_, _, err = c.client.PostMessage(event.Channel,
+			slack.MsgOptionText("Sorry, I encountered an error processing your message.", false))
 		return err
 	}
 
 	// Send response back to Slack
 	if response.Text != "" {
-		_, _, err = c.client.PostMessage(event.Channel, slack.MsgOptionText(response.Text, false))
+		_, _, err = c.client.PostMessage(event.Channel,
+			slack.MsgOptionText(response.Text, false))
 		if err != nil {
 			c.logger.Printf("Error sending message to Slack: %v", err)
 			return err
