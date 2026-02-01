@@ -139,3 +139,46 @@ func (c *Connector) Stop() error {
 func (c *Connector) GetBotInfo(ctx context.Context) (*models.User, error) {
 	return c.bot.GetMe(ctx)
 }
+
+// FormattingGuide returns Telegram-specific formatting instructions
+func (c *Connector) FormattingGuide() string {
+	return `# Telegram Formatting Guide
+
+## Text Formatting (MarkdownV2)
+- *Bold text*: Wrap text in asterisks (e.g., *bold*)
+- _Italic text_: Wrap text in underscores (e.g., _italic_)
+- __Underline__: Wrap text in double underscores (e.g., __underline__)
+- ~Strikethrough~: Wrap text in tildes (e.g., ~strikethrough~)
+- ||Spoiler||: Wrap text in double pipes (e.g., ||spoiler||)
+- Inline code: Wrap text in backticks (e.g., ` + "`code`" + `)
+
+## Code Blocks
+Use triple backticks with optional language for syntax highlighting:
+` + "```python" + `
+def hello():
+    print("Hello, World!")
+` + "```" + `
+
+## Links
+- Inline links: [Link Text](https://example.com)
+- User mentions: [User Name](tg://user?id=USER_ID)
+
+## Special Characters
+In MarkdownV2, these characters must be escaped with backslash: _ * [ ] ( ) ~ ` + "`" + ` > # + - = | { } . !
+
+## HTML Formatting (Alternative)
+Telegram also supports HTML formatting:
+- Bold: <b>text</b>
+- Italic: <i>text</i>
+- Underline: <u>text</u>
+- Strikethrough: <s>text</s>
+- Code: <code>text</code>
+- Pre-formatted: <pre>code block</pre>
+- Links: <a href="URL">text</a>
+
+## Important Notes
+- By default, messages are sent as plain text
+- For formatted text, the parse_mode must be set to "MarkdownV2" or "HTML"
+- Emoji are supported natively using Unicode characters
+- Maximum message length is 4096 characters`
+}

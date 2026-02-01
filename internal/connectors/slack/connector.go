@@ -267,3 +267,42 @@ func (c *Connector) GetBotInfo() (*slack.Bot, error) {
 
 	return c.client.GetBotInfo(slack.GetBotInfoParameters{Bot: auth.BotID})
 }
+
+// FormattingGuide returns Slack-specific formatting instructions
+func (c *Connector) FormattingGuide() string {
+	return `# Slack Formatting Guide
+
+## Text Formatting
+- *Bold text*: Wrap text in asterisks (e.g., *bold*)
+- _Italic text_: Wrap text in underscores (e.g., _italic_)
+- ~Strikethrough~: Wrap text in tildes (e.g., ~strikethrough~)
+- Inline code: Wrap text in backticks (e.g., ` + "`code`" + `)
+
+## Code Blocks
+Use triple backticks for multi-line code blocks:
+` + "```" + `
+code block
+` + "```" + `
+
+## Lists
+- Use hyphens or asterisks for bullet points
+- Lists must have blank lines before and after
+- Each item on a new line
+
+## Links
+- Inline links: <https://example.com|Link Text>
+- Auto-links: <https://example.com>
+
+## Mentions
+- User mentions: <@USER_ID>
+- Channel mentions: <#CHANNEL_ID>
+
+## Quotes
+Use > at the start of a line for block quotes:
+> This is a quote
+
+## Important Notes
+- Slack uses mrkdwn (a simplified Markdown variant), not full Markdown
+- HTML tags are not supported and will be displayed as plain text
+- Emoji can be used with :emoji_name: syntax`
+}
