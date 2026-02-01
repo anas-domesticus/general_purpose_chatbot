@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -373,11 +374,20 @@ func (s *JSONSessionService) loadSession(ctx context.Context, sessionKey string)
 	}
 
 	var sessionData SessionData
-	if err := json.Unmarshal(data, &sessionData); err != nil {
+	// Use a decoder with UseNumber to preserve number precision
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	
+	if err := decoder.Decode(&sessionData); err != nil {
 		s.log.Error("Failed to unmarshal session data",
 			logger.StringField("session_key", sessionKey),
 			logger.ErrorField(err))
 		return nil, fmt.Errorf("failed to unmarshal session data: %w", err)
+	}
+	
+	// Convert json.Number values back to appropriate types in State
+	if sessionData.State != nil {
+		convertJSONNumbers(sessionData.State)
 	}
 
 	s.log.Info("Loaded session from storage",
@@ -587,4 +597,28 @@ func (e *sessionEvents) At(i int) *session.Event {
 	}
 
 	return e.events[i]
+}
+
+// convertJSONNumbers converts json.Number values in a map back to their appropriate Go types
+func convertJSONNumbers(m map[string]any) {
+	for key, value := range m {
+		switch v := value.(type) {
+		case json.Number:
+			// Try to convert to int first, then float64
+			if intVal, err := v.Int64(); err == nil {
+				// Check if it fits in a regular int
+				if intVal >= int64(int(^uint(0)>>1)*-1) && intVal <= int64(int(^uint(0)>>1)) {
+					m[key] = int(intVal)
+				} else {
+					m[key] = intVal
+				}
+			} else if floatVal, err := v.Float64(); err == nil {
+				m[key] = floatVal
+			}
+			// If both conversions fail, keep as json.Number
+		case map[string]any:
+			// Recursively handle nested maps
+			convertJSONNumbers(v)
+		}
+	}
 }
