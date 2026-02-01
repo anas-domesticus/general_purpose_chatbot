@@ -390,26 +390,56 @@ func TestJSONSessionService_StateOperations(t *testing.T) {
 	assert.Contains(t, keys, "number-key")
 }
 
-func TestSessionServiceBuilder(t *testing.T) {
+func TestNewSessionService(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "session_test")
 	require.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
 
-	// Test builder with local storage
-	builder := NewSessionServiceBuilder()
-	service, err := builder.WithLocalFileStorage(tmpDir).Build()
+	// Test local storage configuration
+	service, err := NewSessionService(StorageConfig{
+		Backend: "local",
+		Local:   LocalConfig{BaseDir: tmpDir},
+	})
 	require.NoError(t, err)
 	require.NotNil(t, service)
 
-	// Test builder with S3 storage
+	// Test S3 storage configuration
 	s3Client := NewMockS3Client()
-	builder = NewSessionServiceBuilder()
-	service, err = builder.WithS3Storage("bucket", "prefix", s3Client).Build()
+	service, err = NewSessionService(StorageConfig{
+		Backend: "s3",
+		S3: S3Config{
+			Bucket:   "bucket",
+			Prefix:   "prefix",
+			S3Client: s3Client,
+		},
+	})
 	require.NoError(t, err)
 	require.NotNil(t, service)
 
-	// Test builder with no provider
-	builder = NewSessionServiceBuilder()
-	_, err = builder.Build()
+	// Test invalid backend
+	_, err = NewSessionService(StorageConfig{
+		Backend: "invalid",
+	})
+	assert.Error(t, err)
+
+	// Test local storage with missing BaseDir
+	_, err = NewSessionService(StorageConfig{
+		Backend: "local",
+		Local:   LocalConfig{},
+	})
+	assert.Error(t, err)
+
+	// Test S3 storage with missing Bucket
+	_, err = NewSessionService(StorageConfig{
+		Backend: "s3",
+		S3:      S3Config{S3Client: s3Client},
+	})
+	assert.Error(t, err)
+
+	// Test S3 storage with missing S3Client
+	_, err = NewSessionService(StorageConfig{
+		Backend: "s3",
+		S3:      S3Config{Bucket: "bucket"},
+	})
 	assert.Error(t, err)
 }
