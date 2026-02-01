@@ -17,6 +17,7 @@ import (
 	"github.com/lewisedginton/general_purpose_chatbot/internal/models/anthropic"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/config"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
+	"google.golang.org/adk/session"
 )
 
 func main() {
@@ -64,8 +65,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create in-memory session service
+	// TODO: Make this configurable
+	sessionService := session.InMemoryService()
+
 	// Create executor (shared across all platforms)
-	exec, err := executor.NewExecutor(chatAgent, "chatbot")
+	exec, err := executor.NewExecutor(chatAgent, "chatbot", sessionService)
 	if err != nil {
 		log.Error("Failed to create executor", logger.ErrorField(err))
 		os.Exit(1)
