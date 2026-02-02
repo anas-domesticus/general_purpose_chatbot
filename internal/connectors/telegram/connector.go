@@ -95,12 +95,17 @@ func (c *Connector) handleUpdate(ctx context.Context, b *bot.Bot, update *models
 		update.Message.From.ID,
 		update.Message.Chat.ID)
 
+	// Create user info function that captures the user ID
+	userID := fmt.Sprintf("%d", update.Message.From.ID)
+
 	// Send message to agent via executor
 	response, err := c.executor.Execute(ctx, executor.MessageRequest{
-		UserID:    fmt.Sprintf("%d", update.Message.From.ID),
+		UserID:    userID,
 		SessionID: sessionID,
 		Message:   update.Message.Text,
-	}, c)
+	}, c, func() string {
+		return c.GetUserInfo(ctx, userID)
+	})
 
 	if err != nil {
 		c.logger.Printf("Error from executor: %v", err)
@@ -143,6 +148,58 @@ func (c *Connector) GetBotInfo(ctx context.Context) (*models.User, error) {
 // PlatformName returns the platform name
 func (c *Connector) PlatformName() string {
 	return "Telegram"
+}
+
+// UserInfo returns user context information (legacy method for interface compatibility)
+func (c *Connector) UserInfo() string {
+	// This method is kept for backward compatibility but should not be used directly
+	return ""
+}
+
+// GetUserInfo fetches user information from Telegram and returns a formatted string
+func (c *Connector) GetUserInfo(ctx context.Context, userID string) string {
+	if userID == "" {
+		return ""
+	}
+
+	// Parse userID to int64
+	var id int64
+	if _, err := fmt.Sscanf(userID, "%d", &id); err != nil {
+		c.logger.Printf("Failed to parse user ID %s: %v", userID, err)
+		return ""
+	}
+
+	// Note: Telegram Bot API doesn't have a direct "get user info" method
+	// We can only get user info from updates/messages or using getChat for the user
+	// For now, we'll use what we can get from getChat
+	chat, err := c.bot.GetChat(ctx, &bot.GetChatParams{
+		ChatID: id,
+	})
+	if err != nil {
+		c.logger.Printf("Failed to fetch user info for %s: %v", userID, err)
+		return ""
+	}
+
+	// Format user information
+	info := fmt.Sprintf("- User ID: %d\n", chat.ID)
+
+	if chat.FirstName != "" {
+		info += fmt.Sprintf("- First Name: %s\n", chat.FirstName)
+	}
+
+	if chat.LastName != "" {
+		info += fmt.Sprintf("- Last Name: %s\n", chat.LastName)
+	}
+
+	if chat.Username != "" {
+		info += fmt.Sprintf("- Username: @%s\n", chat.Username)
+	}
+
+	if chat.Bio != "" {
+		info += fmt.Sprintf("- Bio: %s\n", chat.Bio)
+	}
+
+	return info
 }
 
 // FormattingGuide returns Telegram-specific formatting instructions

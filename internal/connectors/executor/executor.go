@@ -12,8 +12,8 @@ import (
 	"google.golang.org/genai"
 )
 
-// AgentFactory is a function that creates an agent instance with a platform-specific guidance provider
-type AgentFactory func(agents.PlatformSpecificGuidanceProvider) (agent.Agent, error)
+// AgentFactory is a function that creates an agent instance with a platform-specific guidance provider and user info function
+type AgentFactory func(agents.PlatformSpecificGuidanceProvider, agents.UserInfoFunc) (agent.Agent, error)
 
 type Executor struct {
 	sessionService session.Service
@@ -33,7 +33,7 @@ func NewExecutor(agentFactory AgentFactory, appName string, sessionService sessi
 	}, nil
 }
 
-func (e *Executor) Execute(ctx context.Context, req MessageRequest, guidanceProvider agents.PlatformSpecificGuidanceProvider) (MessageResponse, error) {
+func (e *Executor) Execute(ctx context.Context, req MessageRequest, guidanceProvider agents.PlatformSpecificGuidanceProvider, userInfoFunc agents.UserInfoFunc) (MessageResponse, error) {
 	// Validate input
 	if req.UserID == "" {
 		return MessageResponse{}, fmt.Errorf("userID is required")
@@ -71,7 +71,7 @@ func (e *Executor) Execute(ctx context.Context, req MessageRequest, guidanceProv
 		StreamingMode: agent.StreamingModeNone,
 	}
 
-	agentInstance, err := e.agentFactory(guidanceProvider)
+	agentInstance, err := e.agentFactory(guidanceProvider, userInfoFunc)
 	if err != nil {
 		return MessageResponse{}, fmt.Errorf("failed to create agent instance: %w", err)
 	}

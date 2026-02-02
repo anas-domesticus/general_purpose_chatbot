@@ -178,7 +178,9 @@ func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.M
 		UserID:    event.User,
 		SessionID: fmt.Sprintf("slack_%s_%s", event.User, event.Channel),
 		Message:   event.Text,
-	}, c)
+	}, c, func() string {
+		return c.GetUserInfo(ctx, event.User)
+	})
 
 	if err != nil {
 		c.logger.Printf("Error from executor: %v", err)
@@ -212,7 +214,9 @@ func (c *Connector) handleAppMentionEvent(ctx context.Context, event *slackevent
 		UserID:    event.User,
 		SessionID: fmt.Sprintf("slack_%s_%s", event.User, event.Channel),
 		Message:   cleanText,
-	}, c)
+	}, c, func() string {
+		return c.GetUserInfo(ctx, event.User)
+	})
 
 	if err != nil {
 		c.logger.Printf("Error from executor: %v", err)
@@ -271,6 +275,54 @@ func (c *Connector) GetBotInfo() (*slack.Bot, error) {
 // PlatformName returns the platform name
 func (c *Connector) PlatformName() string {
 	return "Slack"
+}
+
+// UserInfo returns user context information (legacy method for interface compatibility)
+func (c *Connector) UserInfo() string {
+	// This method is kept for backward compatibility but should not be used directly
+	return ""
+}
+
+// GetUserInfo fetches user information from Slack API and returns a formatted string
+func (c *Connector) GetUserInfo(ctx context.Context, userID string) string {
+	if userID == "" {
+		return ""
+	}
+
+	user, err := c.client.GetUserInfo(userID)
+	if err != nil {
+		c.logger.Printf("Failed to fetch user info for %s: %v", userID, err)
+		return ""
+	}
+
+	// Format user information
+	info := fmt.Sprintf("- User ID: %s\n", user.ID)
+
+	if user.RealName != "" {
+		info += fmt.Sprintf("- Real Name: %s\n", user.RealName)
+	}
+
+	if user.Name != "" {
+		info += fmt.Sprintf("- Username: @%s\n", user.Name)
+	}
+
+	if user.Profile.DisplayName != "" && user.Profile.DisplayName != user.Name {
+		info += fmt.Sprintf("- Display Name: %s\n", user.Profile.DisplayName)
+	}
+
+	if user.Profile.Email != "" {
+		info += fmt.Sprintf("- Email: %s\n", user.Profile.Email)
+	}
+
+	if user.Profile.Title != "" {
+		info += fmt.Sprintf("- Title: %s\n", user.Profile.Title)
+	}
+
+	if user.TZ != "" {
+		info += fmt.Sprintf("- Timezone: %s\n", user.TZ)
+	}
+
+	return info
 }
 
 // FormattingGuide returns Slack-specific formatting instructions

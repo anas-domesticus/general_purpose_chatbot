@@ -21,6 +21,11 @@ type PlatformSpecificGuidanceProvider interface {
 	FormattingGuide() string // Platform-specific formatting instructions
 }
 
+// UserInfoProvider defines an interface for providing user context information
+type UserInfoProvider interface {
+	UserInfo() string // User context information (e.g., username, display name)
+}
+
 // AgentConfig holds configuration for creating a chat agent
 type AgentConfig struct {
 	Name        string // Agent name (e.g., "slack_assistant", "telegram_assistant")
@@ -28,8 +33,11 @@ type AgentConfig struct {
 	Description string // Agent description
 }
 
+// UserInfoFunc is a function that returns user information
+type UserInfoFunc func() string
+
 // NewChatAgent creates a factory function that returns a new chat agent with Claude model and MCP configuration
-func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig AgentConfig) (func(PlatformSpecificGuidanceProvider) (agent.Agent, error), error) {
+func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig AgentConfig) (func(PlatformSpecificGuidanceProvider, UserInfoFunc) (agent.Agent, error), error) {
 	// Load agent instructions from system.md in current directory
 	instructions := loadInstructionFile("system.md")
 
@@ -71,7 +79,7 @@ func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig Ag
 	}
 
 	// Return a factory function that creates the agent
-	return func(guidanceProvider PlatformSpecificGuidanceProvider) (agent.Agent, error) {
+	return func(guidanceProvider PlatformSpecificGuidanceProvider, userInfoFunc UserInfoFunc) (agent.Agent, error) {
 		// Start with base instructions
 		agentInstructions := instructions
 
@@ -92,6 +100,14 @@ func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig Ag
 				}
 
 				agentInstructions += platformGuidance
+			}
+		}
+
+		// Append user information if provided
+		if userInfoFunc != nil {
+			userInfo := userInfoFunc()
+			if userInfo != "" {
+				agentInstructions += fmt.Sprintf("\n\n## User Information\n%s", userInfo)
 			}
 		}
 
