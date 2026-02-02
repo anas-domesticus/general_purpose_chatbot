@@ -273,6 +273,37 @@ func (s *JSONSessionService) AppendEvent(ctx context.Context, sess session.Sessi
 		return nil
 	}
 
+	// Generate event ID if not set
+	if event.ID == "" {
+		event.ID = fmt.Sprintf("event_%d", time.Now().UnixNano())
+	}
+
+	// Set timestamp if not set
+	if event.Timestamp.IsZero() {
+		event.Timestamp = time.Now()
+	}
+
+	// Update the in-memory session object - this is critical!
+	// The runner reuses the same session object and expects events to be available
+	// via sess.Events() on subsequent turns. Without this, the API call fails with
+	// "messages: Field required" because the events list appears empty.
+	if adkSess, ok := sess.(*adkSession); ok {
+		// Update events in-memory
+		if evts, ok := adkSess.events.(*sessionEvents); ok {
+			evts.mutex.Lock()
+			evts.events = append(evts.events, event)
+			evts.mutex.Unlock()
+		}
+		// Update state in-memory (excluding temporary keys)
+		if state, ok := adkSess.state.(*sessionState); ok {
+			for key, value := range event.Actions.StateDelta {
+				if !isTemporaryKey(key) {
+					state.Set(key, value)
+				}
+			}
+		}
+	}
+
 	sessionKey := s.getSessionKey(sess.AppName(), sess.UserID(), sess.ID())
 	s.log.Debug("Appending event to session", logger.StringField("session_key", sessionKey))
 
@@ -290,16 +321,6 @@ func (s *JSONSessionService) AppendEvent(ctx context.Context, sess session.Sessi
 	// Initialize events slice if nil
 	if sessionData.Events == nil {
 		sessionData.Events = make([]*session.Event, 0)
-	}
-
-	// Generate event ID if not set
-	if event.ID == "" {
-		event.ID = fmt.Sprintf("event_%d", time.Now().UnixNano())
-	}
-
-	// Set timestamp if not set
-	if event.Timestamp.IsZero() {
-		event.Timestamp = time.Now()
 	}
 
 	// Apply state delta from the event to the session state
@@ -377,14 +398,14 @@ func (s *JSONSessionService) loadSession(ctx context.Context, sessionKey string)
 	// Use a decoder with UseNumber to preserve number precision
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
-	
+
 	if err := decoder.Decode(&sessionData); err != nil {
 		s.log.Error("Failed to unmarshal session data",
 			logger.StringField("session_key", sessionKey),
 			logger.ErrorField(err))
 		return nil, fmt.Errorf("failed to unmarshal session data: %w", err)
 	}
-	
+
 	// Convert json.Number values back to appropriate types in State
 	if sessionData.State != nil {
 		convertJSONNumbers(sessionData.State)
