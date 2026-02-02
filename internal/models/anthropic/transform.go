@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"google.golang.org/adk/model"
@@ -14,10 +13,14 @@ import (
 
 // transformADKToAnthropic converts ADK content messages to Anthropic message params.
 // It extracts system messages separately since Anthropic requires them as a top-level parameter.
-// Returns the messages, system prompt, and any error.
-func transformADKToAnthropic(contents []*genai.Content) ([]anthropic.MessageParam, string, error) {
+// Returns the messages, system prompt blocks, and any error.
+//
+// Cache Control:
+// Automatically enables prompt caching on the last system block and last user message.
+// This follows Anthropic's best practices for effective caching of context.
+func transformADKToAnthropic(contents []*genai.Content) ([]anthropic.MessageParam, []anthropic.TextBlockParam, error) {
 	var messages []anthropic.MessageParam
-	var systemPrompt strings.Builder
+	var systemBlocks []anthropic.TextBlockParam
 
 	for _, content := range contents {
 		if content == nil {
@@ -28,10 +31,10 @@ func transformADKToAnthropic(contents []*genai.Content) ([]anthropic.MessagePara
 		if content.Role == "system" {
 			for _, part := range content.Parts {
 				if part != nil && part.Text != "" {
-					if systemPrompt.Len() > 0 {
-						systemPrompt.WriteString("\n\n")
+					block := anthropic.TextBlockParam{
+						Text: part.Text,
 					}
-					systemPrompt.WriteString(part.Text)
+					systemBlocks = append(systemBlocks, block)
 				}
 			}
 			continue
@@ -40,14 +43,42 @@ func transformADKToAnthropic(contents []*genai.Content) ([]anthropic.MessagePara
 		// Convert user/assistant messages
 		msg, err := convertContentToMessage(content)
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to convert content: %w", err)
+			return nil, nil, fmt.Errorf("failed to convert content: %w", err)
 		}
 		if msg != nil {
 			messages = append(messages, *msg)
 		}
 	}
 
-	return messages, systemPrompt.String(), nil
+	// Enable cache control on the last system block (best practice for caching system context)
+	if len(systemBlocks) > 0 {
+		lastIdx := len(systemBlocks) - 1
+		cacheControl := anthropic.NewCacheControlEphemeralParam()
+		systemBlocks[lastIdx].CacheControl = cacheControl
+	}
+
+	// Enable cache control on the last user message (best practice for caching conversation history)
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == anthropic.MessageParamRoleUser {
+			// Add cache control to the last content block of the last user message
+			if len(messages[i].Content) > 0 {
+				lastBlockIdx := len(messages[i].Content) - 1
+				cacheControl := anthropic.NewCacheControlEphemeralParam()
+
+				// Add cache control to the last block based on its type
+				if messages[i].Content[lastBlockIdx].OfText != nil {
+					messages[i].Content[lastBlockIdx].OfText.CacheControl = cacheControl
+				} else if messages[i].Content[lastBlockIdx].OfImage != nil {
+					messages[i].Content[lastBlockIdx].OfImage.CacheControl = cacheControl
+				} else if messages[i].Content[lastBlockIdx].OfToolResult != nil {
+					messages[i].Content[lastBlockIdx].OfToolResult.CacheControl = cacheControl
+				}
+			}
+			break
+		}
+	}
+
+	return messages, systemBlocks, nil
 }
 
 // convertContentToMessage converts a single genai.Content to an Anthropic MessageParam.
@@ -150,6 +181,7 @@ func convertPartToContentBlock(part *genai.Part) (anthropic.ContentBlockParamUni
 }
 
 // transformAnthropicToADK converts an Anthropic Message response to an ADK LLMResponse.
+// It includes cache usage information when available.
 func transformAnthropicToADK(msg *anthropic.Message) (*model.LLMResponse, error) {
 	if msg == nil {
 		return nil, fmt.Errorf("nil message")
@@ -170,18 +202,29 @@ func transformAnthropicToADK(msg *anthropic.Message) (*model.LLMResponse, error)
 	// Map Anthropic stop reason to genai FinishReason
 	finishReason := mapStopReason(msg.StopReason)
 
+	// Build usage metadata with cache information
+	// Note: Anthropic reports cache metrics separately:
+	// - CacheCreationInputTokens: tokens used to create new cache entries
+	// - CacheReadInputTokens: tokens read from existing cache
+	// - InputTokens: new input tokens (not cached)
+	// ADK maps these as:
+	// - CachedContentTokenCount: tokens read from cache
+	// - PromptTokenCount: total input tokens (includes cache creation + new input)
+	usageMetadata := &genai.GenerateContentResponseUsageMetadata{
+		PromptTokenCount:        int32(msg.Usage.InputTokens + msg.Usage.CacheCreationInputTokens),
+		CachedContentTokenCount: int32(msg.Usage.CacheReadInputTokens),
+		CandidatesTokenCount:    int32(msg.Usage.OutputTokens),
+		TotalTokenCount:         int32(msg.Usage.InputTokens + msg.Usage.CacheCreationInputTokens + msg.Usage.CacheReadInputTokens + msg.Usage.OutputTokens),
+	}
+
 	response := &model.LLMResponse{
 		Content: &genai.Content{
 			Role:  "model",
 			Parts: parts,
 		},
-		UsageMetadata: &genai.GenerateContentResponseUsageMetadata{
-			PromptTokenCount:     int32(msg.Usage.InputTokens),
-			CandidatesTokenCount: int32(msg.Usage.OutputTokens),
-			TotalTokenCount:      int32(msg.Usage.InputTokens + msg.Usage.OutputTokens),
-		},
-		FinishReason: finishReason,
-		TurnComplete: true,
+		UsageMetadata: usageMetadata,
+		FinishReason:  finishReason,
+		TurnComplete:  true,
 	}
 
 	return response, nil
@@ -244,6 +287,10 @@ func mapStopReason(stopReason anthropic.StopReason) genai.FinishReason {
 // transformToolsToAnthropic converts ADK tool definitions to Anthropic ToolUnionParam.
 // ADK tools are stored as tool.Tool interface objects with a Declaration() method that
 // returns *genai.FunctionDeclaration containing the tool's schema.
+//
+// Cache Control:
+// Automatically enables prompt caching on the last tool definition.
+// This follows Anthropic's best practices for effective caching when using tools.
 func transformToolsToAnthropic(tools map[string]any) ([]anthropic.ToolUnionParam, error) {
 	if tools == nil {
 		return nil, nil
@@ -311,6 +358,15 @@ func transformToolsToAnthropic(tools map[string]any) ([]anthropic.ToolUnionParam
 		}
 
 		anthropicTools = append(anthropicTools, toolParam)
+	}
+
+	// Enable cache control on the last tool (best practice for caching tool definitions)
+	if len(anthropicTools) > 0 {
+		lastIdx := len(anthropicTools) - 1
+		cacheControl := anthropic.NewCacheControlEphemeralParam()
+		if anthropicTools[lastIdx].OfTool != nil {
+			anthropicTools[lastIdx].OfTool.CacheControl = cacheControl
+		}
 	}
 
 	return anthropicTools, nil

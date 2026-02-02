@@ -94,7 +94,7 @@ func TestTransformADKToAnthropic(t *testing.T) {
 		name          string
 		contents      []*genai.Content
 		wantMsgCount  int
-		wantSysPrompt bool
+		wantSysBlocks int
 		wantErr       bool
 	}{
 		{
@@ -106,7 +106,7 @@ func TestTransformADKToAnthropic(t *testing.T) {
 				},
 			},
 			wantMsgCount:  1,
-			wantSysPrompt: false,
+			wantSysBlocks: 0,
 			wantErr:       false,
 		},
 		{
@@ -122,7 +122,7 @@ func TestTransformADKToAnthropic(t *testing.T) {
 				},
 			},
 			wantMsgCount:  1,
-			wantSysPrompt: true,
+			wantSysBlocks: 1,
 			wantErr:       false,
 		},
 		{
@@ -142,14 +142,14 @@ func TestTransformADKToAnthropic(t *testing.T) {
 				},
 			},
 			wantMsgCount:  3,
-			wantSysPrompt: false,
+			wantSysBlocks: 0,
 			wantErr:       false,
 		},
 		{
 			name:          "nil contents",
 			contents:      nil,
 			wantMsgCount:  0,
-			wantSysPrompt: false,
+			wantSysBlocks: 0,
 			wantErr:       false,
 		},
 		{
@@ -161,14 +161,14 @@ func TestTransformADKToAnthropic(t *testing.T) {
 				},
 			},
 			wantMsgCount:  1,
-			wantSysPrompt: false,
+			wantSysBlocks: 0,
 			wantErr:       false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			msgs, sysPrompt, err := transformADKToAnthropic(tt.contents)
+			msgs, sysBlocks, err := transformADKToAnthropic(tt.contents)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("transformADKToAnthropic() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -176,9 +176,38 @@ func TestTransformADKToAnthropic(t *testing.T) {
 			if len(msgs) != tt.wantMsgCount {
 				t.Errorf("transformADKToAnthropic() message count = %v, want %v", len(msgs), tt.wantMsgCount)
 			}
-			if (sysPrompt != "") != tt.wantSysPrompt {
-				t.Errorf("transformADKToAnthropic() has system prompt = %v, want %v", sysPrompt != "", tt.wantSysPrompt)
+			if len(sysBlocks) != tt.wantSysBlocks {
+				t.Errorf("transformADKToAnthropic() system blocks count = %v, want %v", len(sysBlocks), tt.wantSysBlocks)
 			}
+
+			// Verify cache control on last system block if present
+			if len(sysBlocks) > 0 {
+				lastBlock := sysBlocks[len(sysBlocks)-1]
+				// Check that cache control has been set (non-zero value)
+				emptyCC := anthropic.CacheControlEphemeralParam{}
+				if lastBlock.CacheControl == emptyCC {
+					t.Error("transformADKToAnthropic() last system block should have cache control")
+				}
+			}
+
+			// Verify cache control on last user message if present
+			hasUserMsg := false
+			for i := len(msgs) - 1; i >= 0; i-- {
+				if msgs[i].Role == anthropic.MessageParamRoleUser && len(msgs[i].Content) > 0 {
+					hasUserMsg = true
+					lastBlock := msgs[i].Content[len(msgs[i].Content)-1]
+					emptyCC := anthropic.CacheControlEphemeralParam{}
+					// Check if any block type has cache control set (non-zero value)
+					hasCacheControl := (lastBlock.OfText != nil && lastBlock.OfText.CacheControl != emptyCC) ||
+						(lastBlock.OfImage != nil && lastBlock.OfImage.CacheControl != emptyCC) ||
+						(lastBlock.OfToolResult != nil && lastBlock.OfToolResult.CacheControl != emptyCC)
+					if !hasCacheControl {
+						t.Error("transformADKToAnthropic() last user message should have cache control on last block")
+					}
+					break
+				}
+			}
+			_ = hasUserMsg // Used in check above
 		})
 	}
 }
@@ -279,6 +308,68 @@ func TestMapStopReason(t *testing.T) {
 	}
 }
 
+// mockTool is a test helper that implements the toolWithDeclaration interface
+type mockTool struct {
+	decl *genai.FunctionDeclaration
+}
+
+func (m *mockTool) Declaration() *genai.FunctionDeclaration {
+	return m.decl
+}
+
+func TestTransformAnthropicToADK_CacheUsage(t *testing.T) {
+	msg := &anthropic.Message{
+		ID: "msg_123",
+		Content: []anthropic.ContentBlockUnion{
+			{
+				Type: "text",
+				Text: "Hello",
+			},
+		},
+		Model:      "claude-3-5-sonnet-20241022",
+		StopReason: anthropic.StopReasonEndTurn,
+		Usage: anthropic.Usage{
+			InputTokens:              100,
+			OutputTokens:             50,
+			CacheCreationInputTokens: 500,
+			CacheReadInputTokens:     200,
+		},
+	}
+
+	response, err := transformAnthropicToADK(msg)
+	if err != nil {
+		t.Fatalf("transformAnthropicToADK() error = %v", err)
+	}
+
+	if response.UsageMetadata == nil {
+		t.Fatal("transformAnthropicToADK() UsageMetadata is nil")
+	}
+
+	// Verify prompt tokens include both new input and cache creation
+	expectedPromptTokens := int32(100 + 500)
+	if response.UsageMetadata.PromptTokenCount != expectedPromptTokens {
+		t.Errorf("PromptTokenCount = %v, want %v", response.UsageMetadata.PromptTokenCount, expectedPromptTokens)
+	}
+
+	// Verify cached content token count
+	expectedCachedTokens := int32(200)
+	if response.UsageMetadata.CachedContentTokenCount != expectedCachedTokens {
+		t.Errorf("CachedContentTokenCount = %v, want %v", response.UsageMetadata.CachedContentTokenCount, expectedCachedTokens)
+	}
+
+	// Verify output tokens
+	expectedOutputTokens := int32(50)
+	if response.UsageMetadata.CandidatesTokenCount != expectedOutputTokens {
+		t.Errorf("CandidatesTokenCount = %v, want %v", response.UsageMetadata.CandidatesTokenCount, expectedOutputTokens)
+	}
+
+	// Verify total includes all token types
+	expectedTotal := int32(100 + 500 + 200 + 50)
+	if response.UsageMetadata.TotalTokenCount != expectedTotal {
+		t.Errorf("TotalTokenCount = %v, want %v", response.UsageMetadata.TotalTokenCount, expectedTotal)
+	}
+}
+
 func TestTransformToolsToAnthropic(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -301,18 +392,20 @@ func TestTransformToolsToAnthropic(t *testing.T) {
 		{
 			name: "single tool",
 			tools: map[string]any{
-				"get_weather": map[string]any{
-					"name":        "get_weather",
-					"description": "Get weather for a location",
-					"inputSchema": map[string]any{
-						"type": "object",
-						"properties": map[string]any{
-							"location": map[string]any{
-								"type":        "string",
-								"description": "City name",
+				"get_weather": &mockTool{
+					decl: &genai.FunctionDeclaration{
+						Name:        "get_weather",
+						Description: "Get weather for a location",
+						ParametersJsonSchema: map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"location": map[string]any{
+									"type":        "string",
+									"description": "City name",
+								},
 							},
+							"required": []any{"location"},
 						},
-						"required": []any{"location"},
 					},
 				},
 			},
@@ -322,8 +415,11 @@ func TestTransformToolsToAnthropic(t *testing.T) {
 		{
 			name: "tool without name is skipped",
 			tools: map[string]any{
-				"invalid": map[string]any{
-					"description": "No name",
+				"invalid": &mockTool{
+					decl: &genai.FunctionDeclaration{
+						Name:        "",
+						Description: "No name",
+					},
 				},
 			},
 			wantCount: 0,
@@ -332,13 +428,17 @@ func TestTransformToolsToAnthropic(t *testing.T) {
 		{
 			name: "multiple tools",
 			tools: map[string]any{
-				"tool1": map[string]any{
-					"name":        "tool1",
-					"description": "First tool",
+				"tool1": &mockTool{
+					decl: &genai.FunctionDeclaration{
+						Name:        "tool1",
+						Description: "First tool",
+					},
 				},
-				"tool2": map[string]any{
-					"name":        "tool2",
-					"description": "Second tool",
+				"tool2": &mockTool{
+					decl: &genai.FunctionDeclaration{
+						Name:        "tool2",
+						Description: "Second tool",
+					},
 				},
 			},
 			wantCount: 2,
@@ -355,6 +455,15 @@ func TestTransformToolsToAnthropic(t *testing.T) {
 			}
 			if len(tools) != tt.wantCount {
 				t.Errorf("transformToolsToAnthropic() count = %v, want %v", len(tools), tt.wantCount)
+			}
+
+			// Verify cache control on last tool if present
+			if len(tools) > 0 {
+				lastTool := tools[len(tools)-1]
+				emptyCC := anthropic.CacheControlEphemeralParam{}
+				if lastTool.OfTool != nil && lastTool.OfTool.CacheControl == emptyCC {
+					t.Error("transformToolsToAnthropic() last tool should have cache control")
+				}
 			}
 		})
 	}

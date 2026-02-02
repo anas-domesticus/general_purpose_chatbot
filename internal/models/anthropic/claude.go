@@ -58,7 +58,7 @@ func (c *ClaudeModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 // generateContentNonStreaming performs a non-streaming content generation request.
 func (c *ClaudeModel) generateContentNonStreaming(ctx context.Context, req *model.LLMRequest) (*model.LLMResponse, error) {
 	// Transform ADK request to Anthropic format
-	messages, systemPrompt, err := transformADKToAnthropic(req.Contents)
+	messages, systemBlocks, err := transformADKToAnthropic(req.Contents)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
@@ -68,12 +68,18 @@ func (c *ClaudeModel) generateContentNonStreaming(ctx context.Context, req *mode
 	if req.Config != nil && req.Config.SystemInstruction != nil {
 		for _, part := range req.Config.SystemInstruction.Parts {
 			if part != nil && part.Text != "" {
-				if systemPrompt != "" {
-					systemPrompt += "\n\n"
-				}
-				systemPrompt += part.Text
+				systemBlocks = append(systemBlocks, anthropic.TextBlockParam{
+					Text: part.Text,
+				})
 			}
 		}
+	}
+
+	// Add cache control to the last system block if we have any
+	if len(systemBlocks) > 0 {
+		lastIdx := len(systemBlocks) - 1
+		cacheControl := anthropic.NewCacheControlEphemeralParam()
+		systemBlocks[lastIdx].CacheControl = cacheControl
 	}
 
 	// Determine max tokens - default to 4096 if not specified
@@ -89,11 +95,9 @@ func (c *ClaudeModel) generateContentNonStreaming(ctx context.Context, req *mode
 		Messages:  messages,
 	}
 
-	// Add system prompt if present
-	if systemPrompt != "" {
-		params.System = []anthropic.TextBlockParam{
-			{Text: systemPrompt},
-		}
+	// Add system blocks if present
+	if len(systemBlocks) > 0 {
+		params.System = systemBlocks
 	}
 
 	// Add temperature if specified
