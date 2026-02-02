@@ -1,4 +1,4 @@
-package agents
+package http_request
 
 import (
 	"bytes"
@@ -6,20 +6,20 @@ import (
 	"net/http"
 	"time"
 
-	"google.golang.org/adk/model"
 	"google.golang.org/adk/tool"
+	"google.golang.org/adk/tool/functiontool"
 )
 
-// HTTPRequestArgs represents the arguments for the HTTP request tool
-type HTTPRequestArgs struct {
+// Args represents the arguments for the HTTP request tool
+type Args struct {
 	Method  string            `json:"method" jsonschema:"required" jsonschema_description:"HTTP method (GET, POST, PUT, DELETE, etc.)"`
 	URL     string            `json:"url" jsonschema:"required" jsonschema_description:"Target URL for the request"`
 	Headers map[string]string `json:"headers,omitempty" jsonschema_description:"Optional HTTP headers to include in the request"`
 	Body    string            `json:"body,omitempty" jsonschema_description:"Optional request body for POST, PUT, etc."`
 }
 
-// HTTPRequestResult represents the result of the HTTP request tool
-type HTTPRequestResult struct {
+// Result represents the result of the HTTP request tool
+type Result struct {
 	StatusCode int               `json:"status_code"`
 	Status     string            `json:"status"`
 	Headers    map[string]string `json:"headers"`
@@ -27,8 +27,8 @@ type HTTPRequestResult struct {
 	Error      string            `json:"error,omitempty"`
 }
 
-// handleHTTPRequest is the HTTP request tool handler
-func handleHTTPRequest(ctx tool.Context, args HTTPRequestArgs) (HTTPRequestResult, error) {
+// handler is the HTTP request tool handler
+func handler(ctx tool.Context, args Args) (Result, error) {
 	// Create HTTP client with timeout
 	client := &http.Client{
 		Timeout: 30 * time.Second,
@@ -43,7 +43,7 @@ func handleHTTPRequest(ctx tool.Context, args HTTPRequestArgs) (HTTPRequestResul
 	// Create HTTP request
 	req, err := http.NewRequest(args.Method, args.URL, bodyReader)
 	if err != nil {
-		return HTTPRequestResult{
+		return Result{
 			Error: "Failed to create request: " + err.Error(),
 		}, nil
 	}
@@ -56,7 +56,7 @@ func handleHTTPRequest(ctx tool.Context, args HTTPRequestArgs) (HTTPRequestResul
 	// Execute request
 	resp, err := client.Do(req)
 	if err != nil {
-		return HTTPRequestResult{
+		return Result{
 			Error: "Request failed: " + err.Error(),
 		}, nil
 	}
@@ -65,7 +65,7 @@ func handleHTTPRequest(ctx tool.Context, args HTTPRequestArgs) (HTTPRequestResul
 	// Read response body
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return HTTPRequestResult{
+		return Result{
 			StatusCode: resp.StatusCode,
 			Status:     resp.Status,
 			Error:      "Failed to read response body: " + err.Error(),
@@ -80,7 +80,7 @@ func handleHTTPRequest(ctx tool.Context, args HTTPRequestArgs) (HTTPRequestResul
 		}
 	}
 
-	return HTTPRequestResult{
+	return Result{
 		StatusCode: resp.StatusCode,
 		Status:     resp.Status,
 		Headers:    headers,
@@ -88,38 +88,10 @@ func handleHTTPRequest(ctx tool.Context, args HTTPRequestArgs) (HTTPRequestResul
 	}, nil
 }
 
-// AgentInfoArgs represents the arguments for the agent info tool (no args needed)
-type AgentInfoArgs struct{}
-
-// AgentInfoResult represents the result of the agent info tool
-type AgentInfoResult struct {
-	AgentName    string   `json:"agent_name"`
-	Model        string   `json:"model"`
-	Platform     string   `json:"platform"`
-	Description  string   `json:"description"`
-	Capabilities []string `json:"capabilities"`
-	Status       string   `json:"status"`
-	Framework    string   `json:"framework"`
-}
-
-// createAgentInfoHandler creates a platform-specific agent info handler
-func createAgentInfoHandler(agentConfig AgentConfig, llmModel model.LLM) func(tool.Context, AgentInfoArgs) (AgentInfoResult, error) {
-	return func(ctx tool.Context, args AgentInfoArgs) (AgentInfoResult, error) {
-		return AgentInfoResult{
-			AgentName:   agentConfig.Name,
-			Platform:    agentConfig.Platform,
-			Model:       llmModel.Name(),
-			Description: agentConfig.Description,
-			Capabilities: []string{
-				"General conversation and Q&A",
-				"Code analysis and programming help",
-				"Technical discussions",
-				"Creative writing assistance",
-				"Problem solving and reasoning",
-				"HTTP requests to external APIs and services",
-			},
-			Status:    "operational",
-			Framework: "Google ADK Go v0.3.0",
-		}, nil
-	}
+// New creates a new HTTP request tool
+func New() (tool.Tool, error) {
+	return functiontool.New(functiontool.Config{
+		Name:        "http_request",
+		Description: "Make arbitrary HTTP requests to external APIs and services",
+	}, handler)
 }

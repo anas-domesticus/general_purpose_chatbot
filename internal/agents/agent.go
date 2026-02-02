@@ -6,12 +6,13 @@ import (
 	"os/exec"
 
 	"github.com/lewisedginton/general_purpose_chatbot/internal/config"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/tools/agent_info"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/tools/http_request"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/tool"
-	"google.golang.org/adk/tool/functiontool"
 	"google.golang.org/adk/tool/mcptoolset"
 )
 
@@ -42,19 +43,18 @@ func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig Ag
 	instructions := loadInstructionFile("system.md")
 
 	// Create agent info tool with platform-specific handler
-	agentInfoTool, err := functiontool.New(functiontool.Config{
-		Name:        "get_agent_info",
-		Description: "Get information about the current agent and its capabilities",
-	}, createAgentInfoHandler(agentConfig, llmModel))
+	agentInfoTool, err := agent_info.New(agent_info.Config{
+		AgentName:   agentConfig.Name,
+		Platform:    agentConfig.Platform,
+		Description: agentConfig.Description,
+		Model:       llmModel,
+	})
 	if err != nil {
 		return nil, err
 	}
 
 	// Create HTTP request tool
-	httpRequestTool, err := functiontool.New(functiontool.Config{
-		Name:        "http_request",
-		Description: "Make arbitrary HTTP requests to external APIs and services",
-	}, handleHTTPRequest)
+	httpRequestTool, err := http_request.New()
 	if err != nil {
 		return nil, err
 	}
