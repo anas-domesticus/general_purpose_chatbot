@@ -9,14 +9,16 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/executor"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/session_manager"
 )
 
 // Connector represents the Telegram connector
 type Connector struct {
-	bot      *bot.Bot
-	executor *executor.Executor
-	logger   *log.Logger
-	commands *CommandRegistry
+	bot        *bot.Bot
+	executor   *executor.Executor
+	logger     *log.Logger
+	commands   *CommandRegistry
+	sessionMgr session_manager.Manager
 }
 
 // Config holds configuration for the Telegram connector
@@ -26,20 +28,24 @@ type Config struct {
 }
 
 // NewConnector creates a new Telegram connector with in-process executor
-func NewConnector(config Config, exec *executor.Executor) (*Connector, error) {
+func NewConnector(config Config, exec *executor.Executor, sessionMgr session_manager.Manager) (*Connector, error) {
 	if config.BotToken == "" {
 		return nil, fmt.Errorf("bot token is required")
 	}
 	if exec == nil {
 		return nil, fmt.Errorf("executor is required")
 	}
+	if sessionMgr == nil {
+		return nil, fmt.Errorf("session manager is required")
+	}
 
 	logger := log.New(os.Stdout, "[TELEGRAM-CONNECTOR] ", log.LstdFlags|log.Lshortfile)
 
 	// Create the connector instance first
 	connector := &Connector{
-		executor: exec,
-		logger:   logger,
+		executor:   exec,
+		logger:     logger,
+		sessionMgr: sessionMgr,
 	}
 
 	// Initialize Telegram bot with default handler
@@ -103,13 +109,20 @@ func (c *Connector) handleUpdate(ctx context.Context, b *bot.Bot, update *models
 		update.Message.From.Username,
 		update.Message.Text)
 
-	// Create session ID from chat and user
-	sessionID := fmt.Sprintf("telegram_%d_%d",
-		update.Message.From.ID,
-		update.Message.Chat.ID)
-
 	// Create user info function that captures the user ID
 	userID := fmt.Sprintf("%d", update.Message.From.ID)
+	chatID := fmt.Sprintf("%d", update.Message.Chat.ID)
+
+	// Get or create session for this user
+	sessionID, err := c.sessionMgr.GetOrCreateSession(ctx, "telegram", userID, chatID)
+	if err != nil {
+		c.logger.Printf("Error getting session: %v", err)
+		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: update.Message.Chat.ID,
+			Text:   "Sorry, I encountered an error creating your session.",
+		})
+		return
+	}
 
 	// Send message to agent via executor
 	response, err := c.executor.Execute(ctx, executor.MessageRequest{

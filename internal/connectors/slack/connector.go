@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/executor"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/session_manager"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
@@ -20,6 +21,7 @@ type Connector struct {
 	executor   *executor.Executor
 	logger     *log.Logger
 	commands   *CommandRegistry
+	sessionMgr session_manager.Manager
 }
 
 // Config holds configuration for the Slack connector
@@ -30,7 +32,7 @@ type Config struct {
 }
 
 // NewConnector creates a new Slack connector with in-process executor
-func NewConnector(config Config, exec *executor.Executor) (*Connector, error) {
+func NewConnector(config Config, exec *executor.Executor, sessionMgr session_manager.Manager) (*Connector, error) {
 	if !strings.HasPrefix(config.BotToken, "xoxb-") {
 		return nil, fmt.Errorf("invalid bot token format, expected xoxb-*")
 	}
@@ -39,6 +41,9 @@ func NewConnector(config Config, exec *executor.Executor) (*Connector, error) {
 	}
 	if exec == nil {
 		return nil, fmt.Errorf("executor is required")
+	}
+	if sessionMgr == nil {
+		return nil, fmt.Errorf("session manager is required")
 	}
 
 	// Initialize Slack clients
@@ -56,6 +61,7 @@ func NewConnector(config Config, exec *executor.Executor) (*Connector, error) {
 		socketMode: socketMode,
 		executor:   exec,
 		logger:     logger,
+		sessionMgr: sessionMgr,
 	}
 
 	// Setup slash command handlers
@@ -178,9 +184,16 @@ func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.M
 	c.logger.Printf("Processing DM from user %s: %s", event.User, event.Text)
 
 	// Send message to agent via executor
+	// Get or create session for this user
+	sessionID, err := c.sessionMgr.GetOrCreateSession(ctx, "slack", event.User, event.Channel)
+	if err != nil {
+		c.logger.Printf("Error getting session: %v", err)
+		return fmt.Errorf("failed to get session: %w", err)
+	}
+
 	response, err := c.executor.Execute(ctx, executor.MessageRequest{
 		UserID:    event.User,
-		SessionID: fmt.Sprintf("slack_%s_%s", event.User, event.Channel),
+		SessionID: sessionID,
 		Message:   event.Text,
 	}, c, func() string {
 		return c.GetUserInfo(ctx, event.User)
@@ -214,9 +227,16 @@ func (c *Connector) handleAppMentionEvent(ctx context.Context, event *slackevent
 	cleanText := c.removeBotMention(event.Text)
 
 	// Send message to agent via executor
+	// Get or create session for this user
+	sessionID, err := c.sessionMgr.GetOrCreateSession(ctx, "slack", event.User, event.Channel)
+	if err != nil {
+		c.logger.Printf("Error getting session: %v", err)
+		return fmt.Errorf("failed to get session: %w", err)
+	}
+
 	response, err := c.executor.Execute(ctx, executor.MessageRequest{
 		UserID:    event.User,
-		SessionID: fmt.Sprintf("slack_%s_%s", event.User, event.Channel),
+		SessionID: sessionID,
 		Message:   cleanText,
 	}, c, func() string {
 		return c.GetUserInfo(ctx, event.User)

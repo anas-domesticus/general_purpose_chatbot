@@ -41,18 +41,23 @@ func (r *CommandRegistry) Handle(ctx context.Context, cmd slack.SlashCommand) (i
 }
 
 // handleNewCommand handles the /new command
-func handleNewCommand(ctx context.Context, cmd slack.SlashCommand) (interface{}, error) {
-	// TODO: Implement /new command logic
+func (c *Connector) handleNewCommand(ctx context.Context, cmd slack.SlashCommand) (interface{}, error) {
+	sessionID, err := c.sessionMgr.CreateNewSession(ctx, "slack", cmd.UserID, cmd.ChannelID)
+	if err != nil {
+		return map[string]interface{}{
+			"text": "Failed to create new session.",
+		}, err
+	}
 	return map[string]interface{}{
-		"text": "The /new command is not yet implemented.",
+		"text": fmt.Sprintf("Started new conversation! (Session: %s)", sessionID),
 	}, nil
 }
 
 // handleHelpCommand handles the /help command
-func handleHelpCommand(ctx context.Context, cmd slack.SlashCommand) (interface{}, error) {
+func (c *Connector) handleHelpCommand(ctx context.Context, cmd slack.SlashCommand) (interface{}, error) {
 	helpText := `*Available Commands:*
 
-• */new* - Start a new conversation (not yet implemented)
+• */new* - Start a new conversation
 • */help* - Show this help message`
 
 	return map[string]interface{}{
@@ -63,8 +68,12 @@ func handleHelpCommand(ctx context.Context, cmd slack.SlashCommand) (interface{}
 // setupCommands initializes the command registry with all available commands
 func (c *Connector) setupCommands() {
 	c.commands = NewCommandRegistry()
-	c.commands.Register("/new", handleNewCommand)
-	c.commands.Register("/help", handleHelpCommand)
+	c.commands.Register("/new", func(ctx context.Context, cmd slack.SlashCommand) (interface{}, error) {
+		return c.handleNewCommand(ctx, cmd)
+	})
+	c.commands.Register("/help", func(ctx context.Context, cmd slack.SlashCommand) (interface{}, error) {
+		return c.handleHelpCommand(ctx, cmd)
+	})
 }
 
 // handleSlashCommand processes incoming slash command events

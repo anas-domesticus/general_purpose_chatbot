@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/go-telegram/bot"
@@ -59,22 +60,36 @@ func (r *CommandRegistry) IsCommand(text string) bool {
 }
 
 // handleNewCommand handles the /new command
-func handleNewCommand(ctx context.Context, b *bot.Bot, update *models.Update) (string, error) {
-	// TODO: Implement /new command logic
-	return "The /new command is not yet implemented.", nil
+func (c *Connector) handleNewCommand(ctx context.Context, b *bot.Bot, update *models.Update) (string, error) {
+	userID := fmt.Sprintf("%d", update.Message.From.ID)
+	chatID := fmt.Sprintf("%d", update.Message.Chat.ID)
+
+	sessionID, err := c.sessionMgr.CreateNewSession(ctx, "telegram", userID, chatID)
+	if err != nil {
+		return "Failed to create new session.", err
+	}
+	return fmt.Sprintf("Started new conversation! (Session: %s)", sessionID), nil
 }
 
 // handleHelpCommand handles the /help command
-func handleHelpCommand(ctx context.Context, b *bot.Bot, update *models.Update) (string, error) {
-	// TODO: Implement /help command logic
-	return "The /help command is not yet implemented.", nil
+func (c *Connector) handleHelpCommand(ctx context.Context, b *bot.Bot, update *models.Update) (string, error) {
+	helpText := `Available Commands:
+
+/new - Start a new conversation
+/help - Show this help message`
+
+	return helpText, nil
 }
 
 // setupCommands initializes the command registry with all available commands
 func (c *Connector) setupCommands() {
 	c.commands = NewCommandRegistry()
-	c.commands.Register("/new", handleNewCommand)
-	c.commands.Register("/help", handleHelpCommand)
+	c.commands.Register("/new", func(ctx context.Context, b *bot.Bot, update *models.Update) (string, error) {
+		return c.handleNewCommand(ctx, b, update)
+	})
+	c.commands.Register("/help", func(ctx context.Context, b *bot.Bot, update *models.Update) (string, error) {
+		return c.handleHelpCommand(ctx, b, update)
+	})
 }
 
 // handleCommand processes a command update

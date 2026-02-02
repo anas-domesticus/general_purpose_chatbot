@@ -21,6 +21,7 @@ import (
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/telegram"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/models/anthropic"
 	intsession "github.com/lewisedginton/general_purpose_chatbot/internal/session"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/session_manager"
 	pkgconfig "github.com/lewisedginton/general_purpose_chatbot/pkg/config"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"google.golang.org/adk/session"
@@ -87,6 +88,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create session manager for tracking live sessions
+	sessionMgr, err := createSessionManager(ctx, &cfg.Session, log)
+	if err != nil {
+		log.Error("Failed to create session manager", logger.ErrorField(err))
+		os.Exit(1)
+	}
+
 	// Create executor with agent factory (shared across all platforms)
 	// Note: nil formatting provider for now - will be platform-specific in the future
 	exec, err := executor.NewExecutor(chatAgentFactory, "chatbot", sessionService)
@@ -105,7 +113,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := startSlackConnector(ctx, cfg, exec, log); err != nil {
+			if err := startSlackConnector(ctx, cfg, exec, sessionMgr, log); err != nil {
 				log.Error("Slack connector failed", logger.ErrorField(err))
 				cancel() // Trigger shutdown on error
 			}
@@ -120,7 +128,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := startTelegramConnector(ctx, cfg, exec, log); err != nil {
+			if err := startTelegramConnector(ctx, cfg, exec, sessionMgr, log); err != nil {
 				log.Error("Telegram connector failed", logger.ErrorField(err))
 				cancel() // Trigger shutdown on error
 			}
@@ -143,7 +151,7 @@ func main() {
 }
 
 // startSlackConnector initializes and starts the Slack connector
-func startSlackConnector(ctx context.Context, cfg *appconfig.AppConfig, exec *executor.Executor, log logger.Logger) error {
+func startSlackConnector(ctx context.Context, cfg *appconfig.AppConfig, exec *executor.Executor, sessionMgr session_manager.Manager, log logger.Logger) error {
 	log.Info("Starting Slack connector")
 
 	// Create Slack connector
@@ -151,7 +159,7 @@ func startSlackConnector(ctx context.Context, cfg *appconfig.AppConfig, exec *ex
 		BotToken: cfg.Slack.BotToken,
 		AppToken: cfg.Slack.AppToken,
 		Debug:    cfg.Slack.Debug,
-	}, exec)
+	}, exec, sessionMgr)
 	if err != nil {
 		return fmt.Errorf("failed to create Slack connector: %w", err)
 	}
@@ -165,14 +173,14 @@ func startSlackConnector(ctx context.Context, cfg *appconfig.AppConfig, exec *ex
 }
 
 // startTelegramConnector initializes and starts the Telegram connector
-func startTelegramConnector(ctx context.Context, cfg *appconfig.AppConfig, exec *executor.Executor, log logger.Logger) error {
+func startTelegramConnector(ctx context.Context, cfg *appconfig.AppConfig, exec *executor.Executor, sessionMgr session_manager.Manager, log logger.Logger) error {
 	log.Info("Starting Telegram connector")
 
 	// Create Telegram connector
 	telegramConnector, err := telegram.NewConnector(telegram.Config{
 		BotToken: cfg.Telegram.BotToken,
 		Debug:    cfg.Telegram.Debug,
-	}, exec)
+	}, exec, sessionMgr)
 	if err != nil {
 		return fmt.Errorf("failed to create Telegram connector: %w", err)
 	}
@@ -262,6 +270,76 @@ func createSessionService(ctx context.Context, cfg *appconfig.SessionConfig, log
 	default:
 		return nil, fmt.Errorf("unsupported session backend: %s (must be 'local', 's3', or 'memory')", cfg.Backend)
 	}
+}
+
+// createSessionManager creates a session manager based on configuration
+func createSessionManager(ctx context.Context, cfg *appconfig.SessionConfig, log logger.Logger) (session_manager.Manager, error) {
+	var fileProvider intsession.FileProvider
+	var metadataFile string
+
+	switch cfg.Backend {
+	case "local":
+		log.Info("Using local file-based session manager", logger.StringField("directory", cfg.LocalDir))
+
+		// Ensure directory exists
+		if err := os.MkdirAll(cfg.LocalDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create session directory: %w", err)
+		}
+
+		fileProvider = intsession.NewLocalFileProvider(cfg.LocalDir)
+		metadataFile = "sessions_metadata.json"
+
+	case "s3":
+		log.Info("Using S3-based session manager",
+			logger.StringField("bucket", cfg.S3Bucket),
+			logger.StringField("prefix", cfg.S3Prefix))
+
+		if cfg.S3Bucket == "" {
+			return nil, fmt.Errorf("S3 bucket is required when using S3 session storage")
+		}
+
+		// Load AWS configuration
+		var awsCfg aws.Config
+		var err error
+
+		configOptions := []func(*awsconfig.LoadOptions) error{}
+
+		if cfg.S3Profile != "" {
+			configOptions = append(configOptions, awsconfig.WithSharedConfigProfile(cfg.S3Profile))
+		}
+
+		if cfg.S3Region != "" {
+			configOptions = append(configOptions, awsconfig.WithRegion(cfg.S3Region))
+		}
+
+		awsCfg, err = awsconfig.LoadDefaultConfig(ctx, configOptions...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load AWS config: %w", err)
+		}
+
+		// Create S3 client
+		s3Client := s3.NewFromConfig(awsCfg)
+		awsS3Client := intsession.NewAWSS3Client(s3Client)
+
+		fileProvider = intsession.NewS3FileProvider(cfg.S3Bucket, cfg.S3Prefix, awsS3Client)
+		metadataFile = "sessions_metadata.json"
+
+	case "memory":
+		log.Info("Using in-memory session manager (not persisted)")
+		// For memory backend, use a temporary directory for metadata
+		tmpDir := os.TempDir()
+		fileProvider = intsession.NewLocalFileProvider(tmpDir)
+		metadataFile = "sessions_metadata_memory.json"
+
+	default:
+		return nil, fmt.Errorf("unsupported session backend: %s (must be 'local', 's3', or 'memory')", cfg.Backend)
+	}
+
+	return session_manager.New(session_manager.Config{
+		MetadataFile: metadataFile,
+		FileProvider: fileProvider,
+		Logger:       log,
+	})
 }
 
 // setupGracefulShutdown sets up signal handling for graceful shutdown
