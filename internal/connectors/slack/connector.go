@@ -19,6 +19,7 @@ type Connector struct {
 	socketMode *socketmode.Client
 	executor   *executor.Executor
 	logger     *log.Logger
+	commands   *CommandRegistry
 }
 
 // Config holds configuration for the Slack connector
@@ -50,12 +51,17 @@ func NewConnector(config Config, exec *executor.Executor) (*Connector, error) {
 
 	logger := log.New(os.Stdout, "[SLACK-CONNECTOR] ", log.LstdFlags|log.Lshortfile)
 
-	return &Connector{
+	connector := &Connector{
 		client:     client,
 		socketMode: socketMode,
 		executor:   exec,
 		logger:     logger,
-	}, nil
+	}
+
+	// Setup slash command handlers
+	connector.setupCommands()
+
+	return connector, nil
 }
 
 // Start begins the Socket Mode connection and event handling
@@ -99,9 +105,7 @@ func (c *Connector) Start(ctx context.Context) error {
 				// Handle interactive events if needed
 
 			case socketmode.EventTypeSlashCommand:
-				c.logger.Printf("Slash command received")
-				c.socketMode.Ack(*envelope.Request)
-				// Handle slash commands if needed
+				c.handleSlashCommand(ctx, envelope)
 
 			default:
 				c.logger.Printf("Unsupported event type received: %s", envelope.Type)

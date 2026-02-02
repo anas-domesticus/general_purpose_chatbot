@@ -16,6 +16,7 @@ type Connector struct {
 	bot      *bot.Bot
 	executor *executor.Executor
 	logger   *log.Logger
+	commands *CommandRegistry
 }
 
 // Config holds configuration for the Telegram connector
@@ -58,6 +59,9 @@ func NewConnector(config Config, exec *executor.Executor) (*Connector, error) {
 	connector.bot = b
 	logger.Println("Telegram bot initialized successfully")
 
+	// Setup command handlers
+	connector.setupCommands()
+
 	return connector, nil
 }
 
@@ -82,6 +86,15 @@ func (c *Connector) handleUpdate(ctx context.Context, b *bot.Bot, update *models
 	// Skip messages from bots to avoid loops
 	if update.Message.From.IsBot {
 		c.logger.Printf("Skipping bot message from %s", update.Message.From.Username)
+		return
+	}
+
+	// Check if this is a command and handle it separately
+	if c.commands.IsCommand(update.Message.Text) {
+		err := c.handleCommand(ctx, b, update)
+		if err != nil {
+			c.logger.Printf("Error handling command: %v", err)
+		}
 		return
 	}
 
