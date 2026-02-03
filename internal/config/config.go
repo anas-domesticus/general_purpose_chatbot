@@ -21,8 +21,14 @@ type AppConfig struct {
 	RequestTimeout time.Duration `env:"REQUEST_TIMEOUT" yaml:"request_timeout" default:"30s"`
 	IdleTimeout    time.Duration `env:"IDLE_TIMEOUT" yaml:"idle_timeout" default:"60s"`
 
+	// LLM Provider configuration
+	LLM LLMConfig `yaml:"llm,inline"`
+
 	// Anthropic/Claude configuration
 	Anthropic AnthropicConfig `yaml:"anthropic,inline"`
+
+	// Gemini configuration
+	Gemini GeminiConfig `yaml:"gemini,inline"`
 
 	// Logging configuration
 	Logging LoggingConfig `yaml:"logging,inline"`
@@ -82,15 +88,29 @@ type SessionConfig struct {
 	S3Profile string `env:"SESSION_S3_PROFILE" yaml:"s3_profile"`                    // AWS profile name (optional)
 }
 
+// LLMConfig holds LLM provider selection configuration
+type LLMConfig struct {
+	// Provider specifies which LLM provider to use: "claude" or "gemini"
+	Provider string `env:"LLM_PROVIDER" yaml:"provider" default:"claude"`
+}
+
 // AnthropicConfig holds Anthropic-specific configuration
 type AnthropicConfig struct {
-	APIKey         string        `env:"ANTHROPIC_API_KEY" yaml:"api_key" required:"true"`
+	APIKey         string        `env:"ANTHROPIC_API_KEY" yaml:"api_key"`
 	Model          string        `env:"CLAUDE_MODEL" yaml:"model" default:"claude-sonnet-4-5-20250929"`
 	APIBaseURL     string        `env:"ANTHROPIC_API_URL" yaml:"api_base_url" default:"https://api.anthropic.com"`
 	MaxRetries     int           `env:"ANTHROPIC_MAX_RETRIES" yaml:"max_retries" default:"3"`
 	InitialBackoff time.Duration `env:"ANTHROPIC_INITIAL_BACKOFF" yaml:"initial_backoff" default:"1s"`
 	MaxBackoff     time.Duration `env:"ANTHROPIC_MAX_BACKOFF" yaml:"max_backoff" default:"10s"`
 	Timeout        time.Duration `env:"ANTHROPIC_TIMEOUT" yaml:"timeout" default:"30s"`
+}
+
+// GeminiConfig holds Google Gemini-specific configuration
+type GeminiConfig struct {
+	APIKey  string `env:"GEMINI_API_KEY" yaml:"api_key"`
+	Model   string `env:"GEMINI_MODEL" yaml:"model" default:"gemini-2.5-flash"`
+	Project string `env:"GOOGLE_CLOUD_PROJECT" yaml:"project"` // Optional: for Vertex AI
+	Region  string `env:"GOOGLE_CLOUD_REGION" yaml:"region"`   // Optional: for Vertex AI
 }
 
 // LoggingConfig holds logging configuration
@@ -165,6 +185,24 @@ type MCPDiscoveryConfig struct {
 func (c *AppConfig) Validate() error {
 	var result error
 
+	// Validate LLM provider
+	provider := strings.ToLower(c.LLM.Provider)
+	if provider != "claude" && provider != "gemini" {
+		result = multierror.Append(result, fmt.Errorf("llm_provider must be 'claude' or 'gemini', got %q", c.LLM.Provider))
+	}
+
+	// Validate provider-specific configuration
+	if provider == "claude" {
+		if c.Anthropic.APIKey == "" {
+			result = multierror.Append(result, fmt.Errorf("anthropic_api_key is required when using claude provider"))
+		}
+	}
+	if provider == "gemini" {
+		if c.Gemini.APIKey == "" {
+			result = multierror.Append(result, fmt.Errorf("gemini_api_key is required when using gemini provider"))
+		}
+	}
+
 	// Validate log level
 	validLevels := []string{"debug", "info", "warn", "error"}
 	level := strings.ToLower(c.Logging.Level)
@@ -194,21 +232,24 @@ func (c *AppConfig) Validate() error {
 		result = multierror.Append(result, fmt.Errorf("request_timeout must be greater than 0"))
 	}
 
-	if c.Anthropic.Timeout <= 0 {
-		result = multierror.Append(result, fmt.Errorf("anthropic_timeout must be greater than 0"))
-	}
+	// Validate Anthropic-specific config if using Claude
+	if provider == "claude" {
+		if c.Anthropic.Timeout <= 0 {
+			result = multierror.Append(result, fmt.Errorf("anthropic_timeout must be greater than 0"))
+		}
 
-	// Validate retry configuration
-	if c.Anthropic.MaxRetries < 0 {
-		result = multierror.Append(result, fmt.Errorf("anthropic_max_retries cannot be negative"))
-	}
+		// Validate retry configuration
+		if c.Anthropic.MaxRetries < 0 {
+			result = multierror.Append(result, fmt.Errorf("anthropic_max_retries cannot be negative"))
+		}
 
-	if c.Anthropic.InitialBackoff <= 0 {
-		result = multierror.Append(result, fmt.Errorf("anthropic_initial_backoff must be greater than 0"))
-	}
+		if c.Anthropic.InitialBackoff <= 0 {
+			result = multierror.Append(result, fmt.Errorf("anthropic_initial_backoff must be greater than 0"))
+		}
 
-	if c.Anthropic.MaxBackoff < c.Anthropic.InitialBackoff {
-		result = multierror.Append(result, fmt.Errorf("anthropic_max_backoff must be greater than or equal to anthropic_initial_backoff"))
+		if c.Anthropic.MaxBackoff < c.Anthropic.InitialBackoff {
+			result = multierror.Append(result, fmt.Errorf("anthropic_max_backoff must be greater than or equal to anthropic_initial_backoff"))
+		}
 	}
 
 	// Validate security config
@@ -341,6 +382,14 @@ type AnthropicRetryConfig struct {
 	MaxBackoff     time.Duration
 }
 
+// GetLLMModel returns the model name for the configured LLM provider
+func (c *AppConfig) GetLLMModel() string {
+	if strings.ToLower(c.LLM.Provider) == "gemini" {
+		return c.Gemini.Model
+	}
+	return c.Anthropic.Model
+}
+
 // LogConfig logs the current configuration (without sensitive data)
 func (c *AppConfig) LogConfig(log logger.Logger) {
 	// Count enabled MCP servers
@@ -358,7 +407,8 @@ func (c *AppConfig) LogConfig(log logger.Logger) {
 		logger.StringField("version", c.Version),
 		logger.StringField("environment", c.Environment),
 		logger.IntField("port", c.Port),
-		logger.StringField("claude_model", c.Anthropic.Model),
+		logger.StringField("llm_provider", c.LLM.Provider),
+		logger.StringField("llm_model", c.GetLLMModel()),
 		logger.StringField("log_level", c.Logging.Level),
 		logger.StringField("log_format", c.Logging.Format),
 		logger.BoolField("metrics_enabled", c.Monitoring.MetricsEnabled),
