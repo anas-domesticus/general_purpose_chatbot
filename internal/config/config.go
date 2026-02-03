@@ -30,6 +30,9 @@ type AppConfig struct {
 	// Gemini configuration
 	Gemini GeminiConfig `yaml:"gemini,inline"`
 
+	// OpenAI configuration
+	OpenAI OpenAIConfig `yaml:"openai,inline"`
+
 	// Logging configuration
 	Logging LoggingConfig `yaml:"logging,inline"`
 
@@ -90,7 +93,7 @@ type SessionConfig struct {
 
 // LLMConfig holds LLM provider selection configuration
 type LLMConfig struct {
-	// Provider specifies which LLM provider to use: "claude" or "gemini"
+	// Provider specifies which LLM provider to use: "claude", "gemini", or "openai"
 	Provider string `env:"LLM_PROVIDER" yaml:"provider" default:"claude"`
 }
 
@@ -111,6 +114,15 @@ type GeminiConfig struct {
 	Model   string `env:"GEMINI_MODEL" yaml:"model" default:"gemini-2.5-flash"`
 	Project string `env:"GOOGLE_CLOUD_PROJECT" yaml:"project"` // Optional: for Vertex AI
 	Region  string `env:"GOOGLE_CLOUD_REGION" yaml:"region"`   // Optional: for Vertex AI
+}
+
+// OpenAIConfig holds OpenAI-specific configuration
+type OpenAIConfig struct {
+	APIKey     string        `env:"OPENAI_API_KEY" yaml:"api_key"`
+	Model      string        `env:"OPENAI_MODEL" yaml:"model" default:"gpt-4"`
+	APIBaseURL string        `env:"OPENAI_API_URL" yaml:"api_base_url" default:"https://api.openai.com/v1"`
+	MaxRetries int           `env:"OPENAI_MAX_RETRIES" yaml:"max_retries" default:"3"`
+	Timeout    time.Duration `env:"OPENAI_TIMEOUT" yaml:"timeout" default:"30s"`
 }
 
 // LoggingConfig holds logging configuration
@@ -187,8 +199,8 @@ func (c *AppConfig) Validate() error {
 
 	// Validate LLM provider
 	provider := strings.ToLower(c.LLM.Provider)
-	if provider != "claude" && provider != "gemini" {
-		result = multierror.Append(result, fmt.Errorf("llm_provider must be 'claude' or 'gemini', got %q", c.LLM.Provider))
+	if provider != "claude" && provider != "gemini" && provider != "openai" {
+		result = multierror.Append(result, fmt.Errorf("llm_provider must be 'claude', 'gemini', or 'openai', got %q", c.LLM.Provider))
 	}
 
 	// Validate provider-specific configuration
@@ -200,6 +212,11 @@ func (c *AppConfig) Validate() error {
 	if provider == "gemini" {
 		if c.Gemini.APIKey == "" {
 			result = multierror.Append(result, fmt.Errorf("gemini_api_key is required when using gemini provider"))
+		}
+	}
+	if provider == "openai" {
+		if c.OpenAI.APIKey == "" {
+			result = multierror.Append(result, fmt.Errorf("openai_api_key is required when using openai provider"))
 		}
 	}
 
@@ -384,10 +401,14 @@ type AnthropicRetryConfig struct {
 
 // GetLLMModel returns the model name for the configured LLM provider
 func (c *AppConfig) GetLLMModel() string {
-	if strings.ToLower(c.LLM.Provider) == "gemini" {
+	switch strings.ToLower(c.LLM.Provider) {
+	case "gemini":
 		return c.Gemini.Model
+	case "openai":
+		return c.OpenAI.Model
+	default:
+		return c.Anthropic.Model
 	}
-	return c.Anthropic.Model
 }
 
 // LogConfig logs the current configuration (without sensitive data)

@@ -21,6 +21,7 @@ import (
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/slack"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/telegram"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/models/anthropic"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/models/openai"
 	intsession "github.com/lewisedginton/general_purpose_chatbot/internal/session"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/session_manager"
 	pkgconfig "github.com/lewisedginton/general_purpose_chatbot/pkg/config"
@@ -400,6 +401,11 @@ func createLLMModel(ctx context.Context, cfg *appconfig.AppConfig, log logger.Lo
 		}
 
 		return gemini.NewModel(ctx, cfg.Gemini.Model, clientConfig)
+
+	case "openai":
+		log.Info("Initializing OpenAI model",
+			logger.StringField("model", cfg.OpenAI.Model))
+		return openai.NewOpenAIModel(cfg.OpenAI.APIKey, cfg.OpenAI.Model)
 
 	default:
 		return nil, fmt.Errorf("unsupported LLM provider: %s", provider)
