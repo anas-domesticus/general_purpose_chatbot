@@ -1,4 +1,6 @@
 # golangci-lint configuration for General Purpose Chatbot Framework
+version: "2"
+
 run:
   timeout: 5m
   issues-exit-code: 1
@@ -46,29 +48,30 @@ linters-settings:
       - name: cognitive-complexity
         arguments: [20]
 
-linters:
+formatters:
   enable:
-    # Base linters
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - typecheck
-    - unused
-    
-    # Additional quality linters
-    - gocyclo
     - gofmt
     - gofumpt
     - goimports
+
+linters:
+  enable:
+    # Base linters (gosimple merged into staticcheck as of v2)
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    # Additional quality linters
+    - gocyclo
     - goconst
     - misspell
     - revive
     - gosec
     - lll
     - depguard
-    
+
     # Performance and best practices
     - prealloc
     - unconvert
