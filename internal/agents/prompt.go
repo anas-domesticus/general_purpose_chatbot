@@ -1,21 +1,24 @@
 package agents
 
 import (
-	"log"
 	"os"
+
+	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
 
 // loadInstructionFile loads agent instructions from a file in the current working directory
-func loadInstructionFile(filename string) string {
+func loadInstructionFile(filename string, log logger.Logger) string {
 	// Try to load from the file in current working directory
 	content, err := os.ReadFile(filename)
 	if err != nil {
 		// If file doesn't exist, return default instructions
-		log.Printf("Warning: Could not load instruction file %s: %v. Using default instructions.", filename, err)
+		log.Warn("Could not load instruction file, using default instructions",
+			logger.StringField("filename", filename),
+			logger.ErrorField(err))
 		return getDefaultInstructions()
 	}
 
-	log.Printf("Loaded system instructions from %s", filename)
+	log.Info("Loaded system instructions", logger.StringField("filename", filename))
 	return string(content)
 }
 

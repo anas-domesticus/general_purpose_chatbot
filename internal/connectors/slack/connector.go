@@ -3,12 +3,11 @@ package slack
 import (
 	"context"
 	"fmt"
-	"log"
-	"os"
 	"strings"
 
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/executor"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/session_manager"
+	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
@@ -19,16 +18,17 @@ type Connector struct {
 	client     *slack.Client
 	socketMode *socketmode.Client
 	executor   *executor.Executor
-	logger     *log.Logger
+	logger     logger.Logger
 	commands   *CommandRegistry
 	sessionMgr session_manager.Manager
 }
 
 // Config holds configuration for the Slack connector
 type Config struct {
-	BotToken string // xoxb-*
-	AppToken string // xapp-*
-	Debug    bool   // Enable debug logging for Slack API and Socket Mode
+	BotToken string        // xoxb-*
+	AppToken string        // xapp-*
+	Debug    bool          // Enable debug logging for Slack API and Socket Mode
+	Logger   logger.Logger // Structured logger instance
 }
 
 // NewConnector creates a new Slack connector with in-process executor
@@ -45,6 +45,9 @@ func NewConnector(config Config, exec *executor.Executor, sessionMgr session_man
 	if sessionMgr == nil {
 		return nil, fmt.Errorf("session manager is required")
 	}
+	if config.Logger == nil {
+		return nil, fmt.Errorf("logger is required")
+	}
 
 	// Initialize Slack clients
 	client := slack.New(
@@ -54,13 +57,14 @@ func NewConnector(config Config, exec *executor.Executor, sessionMgr session_man
 	)
 	socketMode := socketmode.New(client, socketmode.OptionDebug(config.Debug))
 
-	logger := log.New(os.Stdout, "[SLACK-CONNECTOR] ", log.LstdFlags|log.Lshortfile)
+	// Create a logger with Slack-specific context
+	slackLogger := config.Logger.WithFields(logger.StringField("connector", "slack"))
 
 	connector := &Connector{
 		client:     client,
 		socketMode: socketMode,
 		executor:   exec,
-		logger:     logger,
+		logger:     slackLogger,
 		sessionMgr: sessionMgr,
 	}
 
@@ -72,20 +76,20 @@ func NewConnector(config Config, exec *executor.Executor, sessionMgr session_man
 
 // Start begins the Socket Mode connection and event handling
 func (c *Connector) Start(ctx context.Context) error {
-	c.logger.Println("Starting Slack Socket Mode connector...")
+	c.logger.Info("Starting Slack Socket Mode connector")
 
 	// Handle various event types
 	go func() {
 		for envelope := range c.socketMode.Events {
 			switch envelope.Type {
 			case socketmode.EventTypeConnecting:
-				c.logger.Println("Connecting to Slack with Socket Mode...")
+				c.logger.Info("Connecting to Slack with Socket Mode")
 
 			case socketmode.EventTypeConnectionError:
-				c.logger.Printf("Connection failed: %v", envelope.Data)
+				c.logger.Error("Connection failed", logger.StringField("data", fmt.Sprintf("%v", envelope.Data)))
 
 			case socketmode.EventTypeConnected:
-				c.logger.Println("Connected to Slack with Socket Mode")
+				c.logger.Info("Connected to Slack with Socket Mode")
 
 			case socketmode.EventTypeHello:
 				// Hello event confirms WebSocket connection - no action needed
@@ -93,20 +97,20 @@ func (c *Connector) Start(ctx context.Context) error {
 			case socketmode.EventTypeEventsAPI:
 				eventsAPIEvent, ok := envelope.Data.(slackevents.EventsAPIEvent)
 				if !ok {
-					c.logger.Printf("Ignored event: %+v", envelope)
+					c.logger.Warn("Ignored non-EventsAPI event", logger.StringField("data", fmt.Sprintf("%+v", envelope)))
 					continue
 				}
 
-				c.logger.Printf("Event received: %s", eventsAPIEvent.Type)
+				c.logger.Debug("Event received", logger.StringField("event_type", eventsAPIEvent.Type))
 				c.socketMode.Ack(*envelope.Request)
 
 				err := c.handleEvent(ctx, eventsAPIEvent)
 				if err != nil {
-					c.logger.Printf("Failed to handle event: %v", err)
+					c.logger.Error("Failed to handle event", logger.ErrorField(err))
 				}
 
 			case socketmode.EventTypeInteractive:
-				c.logger.Printf("Interactive event received")
+				c.logger.Debug("Interactive event received")
 				c.socketMode.Ack(*envelope.Request)
 				// Handle interactive events if needed
 
@@ -114,7 +118,7 @@ func (c *Connector) Start(ctx context.Context) error {
 				c.handleSlashCommand(ctx, envelope)
 
 			default:
-				c.logger.Printf("Unsupported event type received: %s", envelope.Type)
+				c.logger.Warn("Unsupported event type received", logger.StringField("event_type", string(envelope.Type)))
 			}
 		}
 	}()
@@ -142,7 +146,9 @@ func (c *Connector) handleEvent(ctx context.Context, event slackevents.EventsAPI
 func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.MessageEvent) error {
 	// Skip messages from bots to avoid loops
 	if event.BotID != "" || event.SubType == "bot_message" {
-		c.logger.Printf("Skipping bot message (BotID: %s, SubType: %s)", event.BotID, event.SubType)
+		c.logger.Debug("Skipping bot message",
+			logger.StringField("bot_id", event.BotID),
+			logger.StringField("sub_type", event.SubType))
 		return nil
 	}
 
@@ -166,13 +172,13 @@ func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.M
 		"ekm_access_denied": true, "assistant_app_thread": true,
 	}
 	if systemSubtypes[event.SubType] {
-		c.logger.Printf("Skipping system message (SubType: %s)", event.SubType)
+		c.logger.Debug("Skipping system message", logger.StringField("sub_type", event.SubType))
 		return nil
 	}
 
 	// Skip messages without a user ID (additional safety check for system messages)
 	if event.User == "" {
-		c.logger.Printf("Skipping message without user ID (SubType: %s)", event.SubType)
+		c.logger.Debug("Skipping message without user ID", logger.StringField("sub_type", event.SubType))
 		return nil
 	}
 
@@ -181,13 +187,15 @@ func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.M
 		return nil
 	}
 
-	c.logger.Printf("Processing DM from user %s: %s", event.User, event.Text)
+	c.logger.Info("Processing DM",
+		logger.StringField("user_id", event.User),
+		logger.StringField("channel", event.Channel))
 
 	// Send message to agent via executor
 	// Get or create session for this user
 	sessionID, err := c.sessionMgr.GetOrCreateSession(ctx, "slack", event.User, event.Channel)
 	if err != nil {
-		c.logger.Printf("Error getting session: %v", err)
+		c.logger.Error("Error getting session", logger.ErrorField(err))
 		return fmt.Errorf("failed to get session: %w", err)
 	}
 
@@ -200,7 +208,7 @@ func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.M
 	})
 
 	if err != nil {
-		c.logger.Printf("Error from executor: %v", err)
+		c.logger.Error("Error from executor", logger.ErrorField(err))
 		_, _, err = c.client.PostMessage(event.Channel,
 			slack.MsgOptionText("Sorry, I encountered an error processing your message.", false))
 		return err
@@ -211,7 +219,7 @@ func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.M
 		_, _, err = c.client.PostMessage(event.Channel,
 			slack.MsgOptionText(response.Text, false))
 		if err != nil {
-			c.logger.Printf("Error sending message to Slack: %v", err)
+			c.logger.Error("Error sending message to Slack", logger.ErrorField(err))
 			return err
 		}
 	}
@@ -221,7 +229,9 @@ func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.M
 
 // handleAppMentionEvent processes @bot mentions in channels
 func (c *Connector) handleAppMentionEvent(ctx context.Context, event *slackevents.AppMentionEvent) error {
-	c.logger.Printf("Processing mention from user %s in channel %s: %s", event.User, event.Channel, event.Text)
+	c.logger.Info("Processing mention",
+		logger.StringField("user_id", event.User),
+		logger.StringField("channel", event.Channel))
 
 	// Remove the bot mention from the message text
 	cleanText := c.removeBotMention(event.Text)
@@ -230,7 +240,7 @@ func (c *Connector) handleAppMentionEvent(ctx context.Context, event *slackevent
 	// Get or create session for this user
 	sessionID, err := c.sessionMgr.GetOrCreateSession(ctx, "slack", event.User, event.Channel)
 	if err != nil {
-		c.logger.Printf("Error getting session: %v", err)
+		c.logger.Error("Error getting session", logger.ErrorField(err))
 		return fmt.Errorf("failed to get session: %w", err)
 	}
 
@@ -243,7 +253,7 @@ func (c *Connector) handleAppMentionEvent(ctx context.Context, event *slackevent
 	})
 
 	if err != nil {
-		c.logger.Printf("Error from executor: %v", err)
+		c.logger.Error("Error from executor", logger.ErrorField(err))
 		// Send error message to channel
 		_, _, err = c.client.PostMessage(event.Channel, slack.MsgOptionText("Sorry, I encountered an error processing your message.", false))
 		return err
@@ -253,7 +263,7 @@ func (c *Connector) handleAppMentionEvent(ctx context.Context, event *slackevent
 	if response.Text != "" {
 		_, _, err = c.client.PostMessage(event.Channel, slack.MsgOptionText(response.Text, false))
 		if err != nil {
-			c.logger.Printf("Error sending message to Slack: %v", err)
+			c.logger.Error("Error sending message to Slack", logger.ErrorField(err))
 			return err
 		}
 	}
@@ -280,7 +290,7 @@ func (c *Connector) removeBotMention(text string) string {
 
 // Stop gracefully stops the connector
 func (c *Connector) Stop() error {
-	c.logger.Println("Stopping Slack connector...")
+	c.logger.Info("Stopping Slack connector")
 	// socketmode client doesn't have a direct stop method,
 	// stopping is handled by context cancellation in RunContext
 	return nil
@@ -315,7 +325,9 @@ func (c *Connector) GetUserInfo(ctx context.Context, userID string) string {
 
 	user, err := c.client.GetUserInfo(userID)
 	if err != nil {
-		c.logger.Printf("Failed to fetch user info for %s: %v", userID, err)
+		c.logger.Warn("Failed to fetch user info",
+			logger.StringField("user_id", userID),
+			logger.ErrorField(err))
 		return ""
 	}
 
