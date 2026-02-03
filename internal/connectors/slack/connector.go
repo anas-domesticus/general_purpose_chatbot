@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/executor"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/session_manager"
@@ -21,6 +22,8 @@ type Connector struct {
 	logger     logger.Logger
 	commands   *CommandRegistry
 	sessionMgr session_manager.Manager
+	connected  bool
+	mu         sync.RWMutex
 }
 
 // Config holds configuration for the Slack connector
@@ -84,12 +87,21 @@ func (c *Connector) Start(ctx context.Context) error {
 			switch envelope.Type {
 			case socketmode.EventTypeConnecting:
 				c.logger.Info("Connecting to Slack with Socket Mode")
+				c.mu.Lock()
+				c.connected = false
+				c.mu.Unlock()
 
 			case socketmode.EventTypeConnectionError:
 				c.logger.Error("Connection failed", logger.StringField("data", fmt.Sprintf("%v", envelope.Data)))
+				c.mu.Lock()
+				c.connected = false
+				c.mu.Unlock()
 
 			case socketmode.EventTypeConnected:
 				c.logger.Info("Connected to Slack with Socket Mode")
+				c.mu.Lock()
+				c.connected = true
+				c.mu.Unlock()
 
 			case socketmode.EventTypeHello:
 				// Hello event confirms WebSocket connection - no action needed
@@ -398,4 +410,17 @@ Use > at the start of a line for block quotes:
 - Slack uses mrkdwn (a simplified Markdown variant), not full Markdown
 - HTML tags are not supported and will be displayed as plain text
 - Emoji can be used with :emoji_name: syntax`
+}
+
+// Ready returns nil if the Slack connector is connected and ready to receive requests,
+// or an error if it's not ready.
+func (c *Connector) Ready() error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.connected {
+		return fmt.Errorf("slack connector not connected")
+	}
+
+	return nil
 }

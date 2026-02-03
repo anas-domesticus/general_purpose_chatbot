@@ -277,3 +277,12 @@ Telegram also supports HTML formatting:
 - Emoji are supported natively using Unicode characters
 - Maximum message length is 4096 characters`
 }
+
+// Ready returns nil if the Telegram connector is initialized and ready to receive requests,
+// or an error if it's not ready.
+func (c *Connector) Ready() error {
+	if c.bot == nil {
+		return fmt.Errorf("telegram bot not initialized")
+	}
+	return nil
+}

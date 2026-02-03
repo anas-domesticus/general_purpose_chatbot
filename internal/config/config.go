@@ -56,6 +56,9 @@ type AppConfig struct {
 
 	// Session storage configuration
 	Session SessionConfig `yaml:"session,inline"`
+
+	// Health check configuration
+	Health HealthConfig `yaml:"health,inline"`
 }
 
 // SlackConfig holds Slack-specific configuration
@@ -89,6 +92,17 @@ type SessionConfig struct {
 	S3Prefix  string `env:"SESSION_S3_PREFIX" yaml:"s3_prefix" default:"sessions"`   // S3 object key prefix
 	S3Region  string `env:"SESSION_S3_REGION" yaml:"s3_region"`                      // AWS region
 	S3Profile string `env:"SESSION_S3_PROFILE" yaml:"s3_profile"`                    // AWS profile name (optional)
+}
+
+// HealthConfig holds health check configuration
+type HealthConfig struct {
+	Enabled          bool          `env:"HEALTH_ENABLED" yaml:"enabled" default:"true"`
+	Port             int           `env:"HEALTH_PORT" yaml:"port" default:"8080"`
+	LivenessPath     string        `env:"HEALTH_LIVENESS_PATH" yaml:"liveness_path" default:"/health/live"`
+	ReadinessPath    string        `env:"HEALTH_READINESS_PATH" yaml:"readiness_path" default:"/health/ready"`
+	CombinedPath     string        `env:"HEALTH_COMBINED_PATH" yaml:"combined_path" default:"/health"`
+	Timeout          time.Duration `env:"HEALTH_TIMEOUT" yaml:"timeout" default:"10s"`
+	FailureThreshold int           `env:"HEALTH_FAILURE_THRESHOLD" yaml:"failure_threshold" default:"3"`
 }
 
 // LLMConfig holds LLM provider selection configuration
@@ -355,6 +369,33 @@ func (c *AppConfig) Validate() error {
 		}
 	}
 
+	// Validate health config (if enabled)
+	if c.Health.Enabled {
+		if c.Health.Port < 1 || c.Health.Port > 65535 {
+			result = multierror.Append(result, fmt.Errorf("health_port must be between 1 and 65535, got %d", c.Health.Port))
+		}
+
+		if c.Health.Timeout <= 0 {
+			result = multierror.Append(result, fmt.Errorf("health_timeout must be greater than 0"))
+		}
+
+		if c.Health.FailureThreshold <= 0 {
+			result = multierror.Append(result, fmt.Errorf("health_failure_threshold must be greater than 0"))
+		}
+
+		if c.Health.LivenessPath == "" {
+			result = multierror.Append(result, fmt.Errorf("health_liveness_path cannot be empty"))
+		}
+
+		if c.Health.ReadinessPath == "" {
+			result = multierror.Append(result, fmt.Errorf("health_readiness_path cannot be empty"))
+		}
+
+		if c.Health.CombinedPath == "" {
+			result = multierror.Append(result, fmt.Errorf("health_combined_path cannot be empty"))
+		}
+	}
+
 	return result
 }
 
@@ -459,6 +500,18 @@ func (c *AppConfig) LogConfig(log logger.Logger) {
 	if c.Session.Backend != "" && c.Session.Backend != "memory" {
 		log.Info("Session storage configured",
 			logger.StringField("backend", c.Session.Backend),
+		)
+	}
+
+	// Log health check configuration
+	if c.Health.Enabled {
+		log.Info("Health checks enabled",
+			logger.IntField("port", c.Health.Port),
+			logger.StringField("liveness_path", c.Health.LivenessPath),
+			logger.StringField("readiness_path", c.Health.ReadinessPath),
+			logger.StringField("combined_path", c.Health.CombinedPath),
+			logger.DurationField("timeout", c.Health.Timeout),
+			logger.IntField("failure_threshold", c.Health.FailureThreshold),
 		)
 	}
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/telegram"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/models/anthropic"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/models/openai"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/monitoring"
 	intsession "github.com/lewisedginton/general_purpose_chatbot/internal/session"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/session_manager"
 	pkgconfig "github.com/lewisedginton/general_purpose_chatbot/pkg/config"
@@ -110,18 +111,61 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Detect and start enabled connectors
+	// Create connectors (but don't start yet)
+	var slackConnector *slack.Connector
+	var telegramConnector *telegram.Connector
+
+	if cfg.Slack.Enabled() {
+		var err error
+		slackConnector, err = slack.NewConnector(slack.Config{
+			BotToken: cfg.Slack.BotToken,
+			AppToken: cfg.Slack.AppToken,
+			Debug:    cfg.Slack.Debug,
+			Logger:   log,
+		}, exec, sessionMgr)
+		if err != nil {
+			log.Error("Failed to create Slack connector", logger.ErrorField(err))
+			os.Exit(1)
+		}
+	}
+
+	if cfg.Telegram.Enabled() {
+		var err error
+		telegramConnector, err = telegram.NewConnector(telegram.Config{
+			BotToken: cfg.Telegram.BotToken,
+			Debug:    cfg.Telegram.Debug,
+			Logger:   log,
+		}, exec, sessionMgr)
+		if err != nil {
+			log.Error("Failed to create Telegram connector", logger.ErrorField(err))
+			os.Exit(1)
+		}
+	}
+
+	// Detect and start enabled connectors and services
 	var wg sync.WaitGroup
 	enabledCount := 0
 
+	// Start health server
+	if cfg.Health.Enabled {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := startHealthServer(ctx, cfg, slackConnector, telegramConnector, log); err != nil {
+				log.Error("Health server failed", logger.ErrorField(err))
+			}
+		}()
+	}
+
 	// Start Slack connector if configured
-	if cfg.Slack.Enabled() {
+	if slackConnector != nil {
 		enabledCount++
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := startSlackConnector(ctx, cfg, exec, sessionMgr, log); err != nil {
-				log.Error("Slack connector failed", logger.ErrorField(err))
+			log.Info("Starting Slack connector")
+			if err := slackConnector.Start(ctx); err != nil {
+				log.Error("Slack connector error", logger.ErrorField(err))
 				cancel() // Trigger shutdown on error
 			}
 		}()
@@ -130,13 +174,25 @@ func main() {
 	}
 
 	// Start Telegram connector if configured
-	if cfg.Telegram.Enabled() {
+	if telegramConnector != nil {
 		enabledCount++
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := startTelegramConnector(ctx, cfg, exec, sessionMgr, log); err != nil {
-				log.Error("Telegram connector failed", logger.ErrorField(err))
+			log.Info("Starting Telegram bot polling")
+
+			// Get and log bot info
+			botInfo, err := telegramConnector.GetBotInfo(ctx)
+			if err != nil {
+				log.Warn("Failed to get Telegram bot info", logger.ErrorField(err))
+			} else {
+				log.Info("Telegram bot connected",
+					logger.StringField("bot_username", botInfo.Username),
+					logger.StringField("bot_first_name", botInfo.FirstName))
+			}
+
+			if err := telegramConnector.Start(ctx); err != nil {
+				log.Error("Telegram connector error", logger.ErrorField(err))
 				cancel() // Trigger shutdown on error
 			}
 		}()
@@ -157,58 +213,59 @@ func main() {
 	log.Info("All connectors stopped")
 }
 
-// startSlackConnector initializes and starts the Slack connector
-func startSlackConnector(ctx context.Context, cfg *appconfig.AppConfig, exec *executor.Executor, sessionMgr session_manager.Manager, log logger.Logger) error {
-	log.Info("Starting Slack connector")
-
-	// Create Slack connector
-	slackConnector, err := slack.NewConnector(slack.Config{
-		BotToken: cfg.Slack.BotToken,
-		AppToken: cfg.Slack.AppToken,
-		Debug:    cfg.Slack.Debug,
-		Logger:   log,
-	}, exec, sessionMgr)
-	if err != nil {
-		return fmt.Errorf("failed to create Slack connector: %w", err)
+// startHealthServer initializes and starts the health check HTTP server
+func startHealthServer(ctx context.Context, cfg *appconfig.AppConfig, slackConn *slack.Connector, telegramConn *telegram.Connector, log logger.Logger) error {
+	if !cfg.Health.Enabled {
+		log.Info("Health checks disabled")
+		return nil
 	}
 
-	// Start connector (blocks until context is cancelled)
-	if err := slackConnector.Start(ctx); err != nil {
-		return fmt.Errorf("Slack connector error: %w", err)
+	log.Info("Starting health check server",
+		logger.IntField("port", cfg.Health.Port),
+		logger.StringField("liveness_path", cfg.Health.LivenessPath),
+		logger.StringField("readiness_path", cfg.Health.ReadinessPath))
+
+	// Create health monitor with connector checks
+	healthMonitor := monitoring.NewHealthMonitor(monitoring.Config{
+		Logger:            log,
+		SlackConnector:    slackConn,
+		TelegramConnector: telegramConn,
+		Timeout:           cfg.Health.Timeout,
+		FailureThreshold:  cfg.Health.FailureThreshold,
+	})
+
+	// Create HTTP server
+	mux := http.NewServeMux()
+	mux.HandleFunc(cfg.Health.LivenessPath, healthMonitor.LivenessHandler())
+	mux.HandleFunc(cfg.Health.ReadinessPath, healthMonitor.ReadinessHandler())
+	mux.HandleFunc(cfg.Health.CombinedPath, healthMonitor.HealthHandler())
+
+	server := &http.Server{
+		Addr:    fmt.Sprintf(":%d", cfg.Health.Port),
+		Handler: mux,
 	}
 
-	return nil
-}
+	// Start server in background
+	go func() {
+		log.Info("Health check server listening", logger.IntField("port", cfg.Health.Port))
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Error("Health server failed", logger.ErrorField(err))
+		}
+	}()
 
-// startTelegramConnector initializes and starts the Telegram connector
-func startTelegramConnector(ctx context.Context, cfg *appconfig.AppConfig, exec *executor.Executor, sessionMgr session_manager.Manager, log logger.Logger) error {
-	log.Info("Starting Telegram connector")
+	// Wait for context cancellation, then shutdown gracefully
+	<-ctx.Done()
+	log.Info("Shutting down health server")
 
-	// Create Telegram connector
-	telegramConnector, err := telegram.NewConnector(telegram.Config{
-		BotToken: cfg.Telegram.BotToken,
-		Debug:    cfg.Telegram.Debug,
-		Logger:   log,
-	}, exec, sessionMgr)
-	if err != nil {
-		return fmt.Errorf("failed to create Telegram connector: %w", err)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Error("Health server shutdown error", logger.ErrorField(err))
+		return err
 	}
 
-	// Get and log bot info
-	botInfo, err := telegramConnector.GetBotInfo(ctx)
-	if err != nil {
-		log.Warn("Failed to get Telegram bot info", logger.ErrorField(err))
-	} else {
-		log.Info("Telegram bot connected",
-			logger.StringField("bot_username", botInfo.Username),
-			logger.StringField("bot_first_name", botInfo.FirstName))
-	}
-
-	// Start connector (blocks until context is cancelled)
-	if err := telegramConnector.Start(ctx); err != nil {
-		return fmt.Errorf("Telegram connector error: %w", err)
-	}
-
+	log.Info("Health server stopped")
 	return nil
 }
 

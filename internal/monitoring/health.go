@@ -18,19 +18,40 @@ type HealthMonitor struct {
 	startTime time.Time
 }
 
+// ConnectorHealthCheck represents a connector that can perform health checks
+type ConnectorHealthCheck interface {
+	Ready() error
+	// We can add a Name() method later if needed
+}
+
 // Config holds configuration for the health monitor
 type Config struct {
-	Logger          logger.Logger
-	AnthropicAPIURL string // URL for Anthropic API health check
-	DatabaseURL     string // Optional: Database connection string for health check
+	Logger            logger.Logger
+	AnthropicAPIURL   string               // URL for Anthropic API health check
+	DatabaseURL       string               // Optional: Database connection string for health check
+	SlackConnector    ConnectorHealthCheck // Optional: Slack connector for health checks
+	TelegramConnector ConnectorHealthCheck // Optional: Telegram connector for health checks
+	Timeout           time.Duration        // Health check timeout
+	FailureThreshold  int                  // Number of consecutive failures before reporting unhealthy
 }
 
 // NewHealthMonitor creates a new health monitor with configured checks
 func NewHealthMonitor(cfg Config) *HealthMonitor {
+	// Set defaults
+	timeout := cfg.Timeout
+	if timeout == 0 {
+		timeout = 10 * time.Second
+	}
+
+	failureThreshold := cfg.FailureThreshold
+	if failureThreshold == 0 {
+		failureThreshold = 3
+	}
+
 	checker := health.New(
 		health.WithLogger(cfg.Logger),
-		health.WithTimeout(10*time.Second),
-		health.WithFailureThreshold(3),
+		health.WithTimeout(timeout),
+		health.WithFailureThreshold(failureThreshold),
 	)
 
 	// Add basic liveness checks
@@ -53,6 +74,20 @@ func NewHealthMonitor(cfg Config) *HealthMonitor {
 		checker.AddReadinessCheck(health.NewCheckFunc("database", func(ctx context.Context) error {
 			// TODO: Implement actual database ping
 			return nil
+		}))
+	}
+
+	// Slack connector health check
+	if cfg.SlackConnector != nil {
+		checker.AddReadinessCheck(health.NewCheckFunc("slack_connector", func(ctx context.Context) error {
+			return cfg.SlackConnector.Ready()
+		}))
+	}
+
+	// Telegram connector health check
+	if cfg.TelegramConnector != nil {
+		checker.AddReadinessCheck(health.NewCheckFunc("telegram_connector", func(ctx context.Context) error {
+			return cfg.TelegramConnector.Ready()
 		}))
 	}
 
