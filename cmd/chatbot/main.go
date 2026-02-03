@@ -7,6 +7,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -24,7 +25,10 @@ import (
 	"github.com/lewisedginton/general_purpose_chatbot/internal/session_manager"
 	pkgconfig "github.com/lewisedginton/general_purpose_chatbot/pkg/config"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
+	"google.golang.org/adk/model"
+	"google.golang.org/adk/model/gemini"
 	"google.golang.org/adk/session"
+	"google.golang.org/genai"
 )
 
 func main() {
@@ -46,7 +50,8 @@ func main() {
 
 	log.Info("Starting Multi-Platform Chatbot",
 		logger.StringField("version", cfg.Version),
-		logger.StringField("claude_model", cfg.Anthropic.Model))
+		logger.StringField("llm_provider", cfg.LLM.Provider),
+		logger.StringField("llm_model", cfg.GetLLMModel()))
 
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -62,16 +67,16 @@ func main() {
 		}
 	}()
 
-	// Create Claude model instance
-	claudeModel, err := anthropic.NewClaudeModel(cfg.Anthropic.APIKey, cfg.Anthropic.Model)
+	// Create LLM model instance based on configured provider
+	llmModel, err := createLLMModel(ctx, cfg, log)
 	if err != nil {
-		log.Error("Failed to create Claude model", logger.ErrorField(err))
+		log.Error("Failed to create LLM model", logger.ErrorField(err))
 		os.Exit(1)
 	}
 
 	// Create generic chat agent factory (shared across all platforms)
 	// Note: nil formatting provider for now - will be platform-specific in the future
-	chatAgentFactory, err := agents.NewChatAgent(claudeModel, cfg.MCP, agents.AgentConfig{
+	chatAgentFactory, err := agents.NewChatAgent(llmModel, cfg.MCP, agents.AgentConfig{
 		Name:        "chat_assistant",
 		Platform:    "Multi-Platform",
 		Description: "Claude-powered assistant with MCP capabilities",
@@ -360,4 +365,40 @@ func setupGracefulShutdown(cancel context.CancelFunc, log logger.Logger) {
 			os.Exit(1)
 		})
 	}()
+}
+
+// createLLMModel creates an LLM model instance based on the configured provider
+func createLLMModel(ctx context.Context, cfg *appconfig.AppConfig, log logger.Logger) (model.LLM, error) {
+	provider := strings.ToLower(cfg.LLM.Provider)
+
+	switch provider {
+	case "claude":
+		log.Info("Initializing Claude model",
+			logger.StringField("model", cfg.Anthropic.Model))
+		return anthropic.NewClaudeModel(cfg.Anthropic.APIKey, cfg.Anthropic.Model)
+
+	case "gemini":
+		log.Info("Initializing Gemini model",
+			logger.StringField("model", cfg.Gemini.Model))
+
+		// Configure the Gemini client
+		clientConfig := &genai.ClientConfig{
+			APIKey: cfg.Gemini.APIKey,
+		}
+
+		// If Vertex AI credentials are provided, use Vertex AI backend
+		if cfg.Gemini.Project != "" && cfg.Gemini.Region != "" {
+			clientConfig.Backend = genai.BackendVertexAI
+			clientConfig.Project = cfg.Gemini.Project
+			clientConfig.Location = cfg.Gemini.Region
+			log.Info("Using Vertex AI backend",
+				logger.StringField("project", cfg.Gemini.Project),
+				logger.StringField("region", cfg.Gemini.Region))
+		}
+
+		return gemini.NewModel(ctx, cfg.Gemini.Model, clientConfig)
+
+	default:
+		return nil, fmt.Errorf("unsupported LLM provider: %s", provider)
+	}
 }
