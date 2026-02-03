@@ -2,12 +2,12 @@ package agents
 
 import (
 	"fmt"
-	"log"
 	"os/exec"
 
 	"github.com/lewisedginton/general_purpose_chatbot/internal/config"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/tools/agent_info"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/tools/http_request"
+	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
@@ -29,9 +29,10 @@ type UserInfoProvider interface {
 
 // AgentConfig holds configuration for creating a chat agent
 type AgentConfig struct {
-	Name        string // Agent name (e.g., "slack_assistant", "telegram_assistant")
-	Platform    string // Platform name for description (e.g., "Slack", "Telegram")
-	Description string // Agent description
+	Name        string        // Agent name (e.g., "slack_assistant", "telegram_assistant")
+	Platform    string        // Platform name for description (e.g., "Slack", "Telegram")
+	Description string        // Agent description
+	Logger      logger.Logger // Structured logger instance
 }
 
 // UserInfoFunc is a function that returns user information
@@ -39,8 +40,14 @@ type UserInfoFunc func() string
 
 // NewChatAgent creates a factory function that returns a new chat agent with Claude model and MCP configuration
 func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig AgentConfig) (func(PlatformSpecificGuidanceProvider, UserInfoFunc) (agent.Agent, error), error) {
+	if agentConfig.Logger == nil {
+		return nil, fmt.Errorf("logger is required in AgentConfig")
+	}
+
+	log := agentConfig.Logger.WithFields(logger.StringField("component", "agent"))
+
 	// Load agent instructions from system.md in current directory
-	instructions := loadInstructionFile("system.md")
+	instructions := loadInstructionFile("system.md", log)
 
 	// Create agent info tool with platform-specific handler
 	agentInfoTool, err := agent_info.New(agent_info.Config{
@@ -68,12 +75,12 @@ func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig Ag
 	// Create MCP toolsets if MCP is enabled
 	var toolsets []tool.Toolset
 	if mcpConfig.Enabled {
-		mcpToolsets, err := createMCPToolsets(mcpConfig)
+		mcpToolsets, err := createMCPToolsets(mcpConfig, log)
 		if err != nil {
-			log.Printf("Warning: Failed to create MCP toolsets: %v", err)
+			log.Warn("Failed to create MCP toolsets", logger.ErrorField(err))
 			// Continue with basic tools if MCP setup fails
 		} else {
-			log.Printf("Successfully created %d MCP toolsets", len(mcpToolsets))
+			log.Info("Successfully created MCP toolsets", logger.IntField("count", len(mcpToolsets)))
 			toolsets = append(toolsets, mcpToolsets...)
 		}
 	}
@@ -130,17 +137,19 @@ func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig Ag
 }
 
 // createMCPToolsets creates MCP toolsets based on configuration
-func createMCPToolsets(mcpConfig config.MCPConfig) ([]tool.Toolset, error) {
+func createMCPToolsets(mcpConfig config.MCPConfig, log logger.Logger) ([]tool.Toolset, error) {
 	var toolsets []tool.Toolset
 
 	for serverName, serverConfig := range mcpConfig.Servers {
 		// Skip disabled servers
 		if !serverConfig.Enabled {
-			log.Printf("Skipping disabled MCP server: %s", serverName)
+			log.Debug("Skipping disabled MCP server", logger.StringField("server", serverName))
 			continue
 		}
 
-		log.Printf("Creating MCP toolset for server: %s (transport: %s)", serverName, serverConfig.Transport)
+		log.Debug("Creating MCP toolset",
+			logger.StringField("server", serverName),
+			logger.StringField("transport", serverConfig.Transport))
 
 		// Create transport based on transport type
 		var transport mcp.Transport
@@ -150,18 +159,24 @@ func createMCPToolsets(mcpConfig config.MCPConfig) ([]tool.Toolset, error) {
 		case "stdio":
 			transport, err = createStdioTransport(serverConfig)
 		case "websocket":
-			log.Printf("Warning: WebSocket transport not yet implemented for MCP server '%s'", serverName)
+			log.Warn("WebSocket transport not yet implemented",
+				logger.StringField("server", serverName))
 			continue
 		case "sse":
-			log.Printf("Warning: SSE transport not yet implemented for MCP server '%s'", serverName)
+			log.Warn("SSE transport not yet implemented",
+				logger.StringField("server", serverName))
 			continue
 		default:
-			log.Printf("Warning: Unsupported transport type '%s' for MCP server '%s'", serverConfig.Transport, serverName)
+			log.Warn("Unsupported transport type",
+				logger.StringField("transport", serverConfig.Transport),
+				logger.StringField("server", serverName))
 			continue
 		}
 
 		if err != nil {
-			log.Printf("Warning: Failed to create transport for MCP server '%s': %v", serverName, err)
+			log.Warn("Failed to create transport",
+				logger.StringField("server", serverName),
+				logger.ErrorField(err))
 			continue
 		}
 
@@ -170,12 +185,14 @@ func createMCPToolsets(mcpConfig config.MCPConfig) ([]tool.Toolset, error) {
 			Transport: transport,
 		})
 		if err != nil {
-			log.Printf("Warning: Failed to create MCP toolset for server '%s': %v", serverName, err)
+			log.Warn("Failed to create MCP toolset",
+				logger.StringField("server", serverName),
+				logger.ErrorField(err))
 			continue
 		}
 
 		toolsets = append(toolsets, mcpToolset)
-		log.Printf("Successfully created MCP toolset for server: %s", serverName)
+		log.Info("Successfully created MCP toolset", logger.StringField("server", serverName))
 	}
 
 	return toolsets, nil

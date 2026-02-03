@@ -75,6 +75,7 @@ func main() {
 		Name:        "chat_assistant",
 		Platform:    "Multi-Platform",
 		Description: "Claude-powered assistant with MCP capabilities",
+		Logger:      log,
 	})
 	if err != nil {
 		log.Error("Failed to create chat agent factory", logger.ErrorField(err))
@@ -159,6 +160,7 @@ func startSlackConnector(ctx context.Context, cfg *appconfig.AppConfig, exec *ex
 		BotToken: cfg.Slack.BotToken,
 		AppToken: cfg.Slack.AppToken,
 		Debug:    cfg.Slack.Debug,
+		Logger:   log,
 	}, exec, sessionMgr)
 	if err != nil {
 		return fmt.Errorf("failed to create Slack connector: %w", err)
@@ -180,6 +182,7 @@ func startTelegramConnector(ctx context.Context, cfg *appconfig.AppConfig, exec 
 	telegramConnector, err := telegram.NewConnector(telegram.Config{
 		BotToken: cfg.Telegram.BotToken,
 		Debug:    cfg.Telegram.Debug,
+		Logger:   log,
 	}, exec, sessionMgr)
 	if err != nil {
 		return fmt.Errorf("failed to create Telegram connector: %w", err)

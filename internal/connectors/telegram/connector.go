@@ -3,28 +3,28 @@ package telegram
 import (
 	"context"
 	"fmt"
-	"log"
-	"os"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/executor"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/session_manager"
+	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
 
 // Connector represents the Telegram connector
 type Connector struct {
 	bot        *bot.Bot
 	executor   *executor.Executor
-	logger     *log.Logger
+	logger     logger.Logger
 	commands   *CommandRegistry
 	sessionMgr session_manager.Manager
 }
 
 // Config holds configuration for the Telegram connector
 type Config struct {
-	BotToken string // Bot token from @BotFather
-	Debug    bool   // Enable debug logging
+	BotToken string        // Bot token from @BotFather
+	Debug    bool          // Enable debug logging
+	Logger   logger.Logger // Structured logger instance
 }
 
 // NewConnector creates a new Telegram connector with in-process executor
@@ -38,13 +38,17 @@ func NewConnector(config Config, exec *executor.Executor, sessionMgr session_man
 	if sessionMgr == nil {
 		return nil, fmt.Errorf("session manager is required")
 	}
+	if config.Logger == nil {
+		return nil, fmt.Errorf("logger is required")
+	}
 
-	logger := log.New(os.Stdout, "[TELEGRAM-CONNECTOR] ", log.LstdFlags|log.Lshortfile)
+	// Create a logger with Telegram-specific context
+	telegramLogger := config.Logger.WithFields(logger.StringField("connector", "telegram"))
 
 	// Create the connector instance first
 	connector := &Connector{
 		executor:   exec,
-		logger:     logger,
+		logger:     telegramLogger,
 		sessionMgr: sessionMgr,
 	}
 
@@ -63,7 +67,7 @@ func NewConnector(config Config, exec *executor.Executor, sessionMgr session_man
 	}
 
 	connector.bot = b
-	logger.Println("Telegram bot initialized successfully")
+	telegramLogger.Info("Telegram bot initialized successfully")
 
 	// Setup command handlers
 	connector.setupCommands()
@@ -73,7 +77,7 @@ func NewConnector(config Config, exec *executor.Executor, sessionMgr session_man
 
 // Start begins polling for updates
 func (c *Connector) Start(ctx context.Context) error {
-	c.logger.Println("Starting Telegram bot polling...")
+	c.logger.Info("Starting Telegram bot polling")
 
 	// Start polling - this blocks until context is cancelled
 	c.bot.Start(ctx)
@@ -85,13 +89,13 @@ func (c *Connector) Start(ctx context.Context) error {
 func (c *Connector) handleUpdate(ctx context.Context, b *bot.Bot, update *models.Update) {
 	// Only process text messages for now
 	if update.Message == nil || update.Message.Text == "" {
-		c.logger.Printf("Skipping non-text message or empty update")
+		c.logger.Debug("Skipping non-text message or empty update")
 		return
 	}
 
 	// Skip messages from bots to avoid loops
 	if update.Message.From.IsBot {
-		c.logger.Printf("Skipping bot message from %s", update.Message.From.Username)
+		c.logger.Debug("Skipping bot message", logger.StringField("username", update.Message.From.Username))
 		return
 	}
 
@@ -99,15 +103,14 @@ func (c *Connector) handleUpdate(ctx context.Context, b *bot.Bot, update *models
 	if c.commands.IsCommand(update.Message.Text) {
 		err := c.handleCommand(ctx, b, update)
 		if err != nil {
-			c.logger.Printf("Error handling command: %v", err)
+			c.logger.Error("Error handling command", logger.ErrorField(err))
 		}
 		return
 	}
 
-	c.logger.Printf("Processing message from user %d (%s): %s",
-		update.Message.From.ID,
-		update.Message.From.Username,
-		update.Message.Text)
+	c.logger.Info("Processing message",
+		logger.Int64Field("user_id", update.Message.From.ID),
+		logger.StringField("username", update.Message.From.Username))
 
 	// Create user info function that captures the user ID
 	userID := fmt.Sprintf("%d", update.Message.From.ID)
@@ -116,7 +119,7 @@ func (c *Connector) handleUpdate(ctx context.Context, b *bot.Bot, update *models
 	// Get or create session for this user
 	sessionID, err := c.sessionMgr.GetOrCreateSession(ctx, "telegram", userID, chatID)
 	if err != nil {
-		c.logger.Printf("Error getting session: %v", err)
+		c.logger.Error("Error getting session", logger.ErrorField(err))
 		_, _ = b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
 			Text:   "Sorry, I encountered an error creating your session.",
@@ -134,14 +137,14 @@ func (c *Connector) handleUpdate(ctx context.Context, b *bot.Bot, update *models
 	})
 
 	if err != nil {
-		c.logger.Printf("Error from executor: %v", err)
+		c.logger.Error("Error from executor", logger.ErrorField(err))
 		// Send error message to user
 		_, err = b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
 			Text:   "Sorry, I encountered an error processing your message.",
 		})
 		if err != nil {
-			c.logger.Printf("Error sending error message: %v", err)
+			c.logger.Error("Error sending error message", logger.ErrorField(err))
 		}
 		return
 	}
@@ -153,7 +156,7 @@ func (c *Connector) handleUpdate(ctx context.Context, b *bot.Bot, update *models
 			Text:   response.Text,
 		})
 		if err != nil {
-			c.logger.Printf("Error sending message to Telegram: %v", err)
+			c.logger.Error("Error sending message to Telegram", logger.ErrorField(err))
 			return
 		}
 	}
@@ -161,7 +164,7 @@ func (c *Connector) handleUpdate(ctx context.Context, b *bot.Bot, update *models
 
 // Stop gracefully stops the connector
 func (c *Connector) Stop() error {
-	c.logger.Println("Stopping Telegram connector...")
+	c.logger.Info("Stopping Telegram connector")
 	// Stopping is handled by context cancellation in Start
 	return nil
 }
@@ -191,7 +194,9 @@ func (c *Connector) GetUserInfo(ctx context.Context, userID string) string {
 	// Parse userID to int64
 	var id int64
 	if _, err := fmt.Sscanf(userID, "%d", &id); err != nil {
-		c.logger.Printf("Failed to parse user ID %s: %v", userID, err)
+		c.logger.Warn("Failed to parse user ID",
+			logger.StringField("user_id", userID),
+			logger.ErrorField(err))
 		return ""
 	}
 
@@ -202,7 +207,9 @@ func (c *Connector) GetUserInfo(ctx context.Context, userID string) string {
 		ChatID: id,
 	})
 	if err != nil {
-		c.logger.Printf("Failed to fetch user info for %s: %v", userID, err)
+		c.logger.Warn("Failed to fetch user info",
+			logger.StringField("user_id", userID),
+			logger.ErrorField(err))
 		return ""
 	}
 

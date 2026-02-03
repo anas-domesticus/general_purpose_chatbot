@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
 
 // CommandHandler handles a specific Telegram bot command
@@ -94,15 +95,17 @@ func (c *Connector) setupCommands() {
 
 // handleCommand processes a command update
 func (c *Connector) handleCommand(ctx context.Context, b *bot.Bot, update *models.Update) error {
-	c.logger.Printf("Processing command from user %d (%s): %s",
-		update.Message.From.ID,
-		update.Message.From.Username,
-		update.Message.Text)
+	c.logger.Info("Processing command",
+		logger.Int64Field("user_id", update.Message.From.ID),
+		logger.StringField("username", update.Message.From.Username),
+		logger.StringField("command", update.Message.Text))
 
 	// Handle the command via registry
 	response, err := c.commands.Handle(ctx, b, update)
 	if err != nil {
-		c.logger.Printf("Error handling command %s: %v", update.Message.Text, err)
+		c.logger.Error("Error handling command",
+			logger.StringField("command", update.Message.Text),
+			logger.ErrorField(err))
 		response = "An error occurred while processing your command."
 	}
 
@@ -113,7 +116,7 @@ func (c *Connector) handleCommand(ctx context.Context, b *bot.Bot, update *model
 			Text:   response,
 		})
 		if err != nil {
-			c.logger.Printf("Error sending command response: %v", err)
+			c.logger.Error("Error sending command response", logger.ErrorField(err))
 			return err
 		}
 	}

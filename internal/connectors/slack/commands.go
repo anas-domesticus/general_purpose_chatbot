@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/socketmode"
 )
@@ -80,17 +81,22 @@ func (c *Connector) setupCommands() {
 func (c *Connector) handleSlashCommand(ctx context.Context, envelope socketmode.Event) {
 	cmd, ok := envelope.Data.(slack.SlashCommand)
 	if !ok {
-		c.logger.Printf("Failed to parse slash command data: %+v", envelope.Data)
+		c.logger.Warn("Failed to parse slash command data", logger.StringField("data", fmt.Sprintf("%+v", envelope.Data)))
 		c.socketMode.Ack(*envelope.Request)
 		return
 	}
 
-	c.logger.Printf("Received slash command: %s from user %s in channel %s", cmd.Command, cmd.UserID, cmd.ChannelID)
+	c.logger.Info("Received slash command",
+		logger.StringField("command", cmd.Command),
+		logger.StringField("user_id", cmd.UserID),
+		logger.StringField("channel_id", cmd.ChannelID))
 
 	// Handle the command via registry
 	response, err := c.commands.Handle(ctx, cmd)
 	if err != nil {
-		c.logger.Printf("Error handling command %s: %v", cmd.Command, err)
+		c.logger.Error("Error handling command",
+			logger.StringField("command", cmd.Command),
+			logger.ErrorField(err))
 		response = map[string]interface{}{
 			"text": "An error occurred while processing your command.",
 		}
