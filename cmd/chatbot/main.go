@@ -41,7 +41,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize structured logger
+	// Initialise structured logger
 	log := logger.NewLogger(logger.Config{
 		Level:   cfg.GetLogLevel(),
 		Format:  cfg.Logging.Format,
@@ -214,7 +214,7 @@ func main() {
 	log.Info("All connectors stopped")
 }
 
-// startHealthServer initializes and starts the health check HTTP server
+// startHealthServer initialises and starts the health check HTTP server
 func startHealthServer(
 	ctx context.Context,
 	cfg *appconfig.AppConfig,
@@ -441,12 +441,12 @@ func createLLMModel(ctx context.Context, cfg *appconfig.AppConfig, log logger.Lo
 
 	switch provider {
 	case "claude":
-		log.Info("Initializing Claude model",
+		log.Info("Initialising Claude model",
 			logger.StringField("model", cfg.Anthropic.Model))
 		return anthropic.NewClaudeModel(cfg.Anthropic.APIKey, cfg.Anthropic.Model)
 
 	case "gemini":
-		log.Info("Initializing Gemini model",
+		log.Info("Initialising Gemini model",
 			logger.StringField("model", cfg.Gemini.Model))
 
 		// Configure the Gemini client
@@ -467,9 +467,9 @@ func createLLMModel(ctx context.Context, cfg *appconfig.AppConfig, log logger.Lo
 		return gemini.NewModel(ctx, cfg.Gemini.Model, clientConfig)
 
 	case "openai":
-		log.Info("Initializing OpenAI model",
+		log.Info("Initialising OpenAI model",
 			logger.StringField("model", cfg.OpenAI.Model))
-		return openai.NewOpenAIModel(cfg.OpenAI.APIKey, cfg.OpenAI.Model)
+		return openai.New(cfg.OpenAI.APIKey, cfg.OpenAI.Model)
 
 	default:
 		return nil, fmt.Errorf("unsupported LLM provider: %s", provider)

@@ -177,7 +177,7 @@ func convertPartToContentBlock(part *genai.Part) (anthropic.ContentBlockParamUni
 
 	// Handle function response (tool result)
 	if part.FunctionResponse != nil {
-		// Serialize the response to JSON string
+		// Serialise the response to JSON string
 		responseJSON, err := json.Marshal(part.FunctionResponse.Response)
 		if err != nil {
 			return anthropic.ContentBlockParamUnion{}, fmt.Errorf("failed to marshal function response: %w", err)

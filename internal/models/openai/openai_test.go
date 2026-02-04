@@ -9,7 +9,7 @@ import (
 	"google.golang.org/genai"
 )
 
-func TestNewOpenAIModel(t *testing.T) {
+func TestNew(t *testing.T) {
 	tests := []struct {
 		name      string
 		apiKey    string
@@ -38,25 +38,25 @@ func TestNewOpenAIModel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m, err := NewOpenAIModel(tt.apiKey, tt.modelName)
+			m, err := New(tt.apiKey, tt.modelName)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("NewOpenAIModel() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("New() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !tt.wantErr && m == nil {
-				t.Error("NewOpenAIModel() returned nil model without error")
+				t.Error("New() returned nil model without error")
 			}
 			if !tt.wantErr && m.Name() != tt.modelName {
-				t.Errorf("NewOpenAIModel() Name() = %v, want %v", m.Name(), tt.modelName)
+				t.Errorf("New() Name() = %v, want %v", m.Name(), tt.modelName)
 			}
 		})
 	}
 }
 
-func TestOpenAIModel_Name(t *testing.T) {
-	m, err := NewOpenAIModel("test-key", "gpt-4o")
+func TestModel_Name(t *testing.T) {
+	m, err := New("test-key", "gpt-4o")
 	if err != nil {
-		t.Fatalf("NewOpenAIModel() error = %v", err)
+		t.Fatalf("New() error = %v", err)
 	}
 
 	if got := m.Name(); got != "gpt-4o" {
@@ -64,10 +64,10 @@ func TestOpenAIModel_Name(t *testing.T) {
 	}
 }
 
-func TestOpenAIModel_GenerateContent_StreamingNotSupported(t *testing.T) {
-	m, err := NewOpenAIModel("test-key", "gpt-4o")
+func TestModel_GenerateContent_StreamingNotSupported(t *testing.T) {
+	m, err := New("test-key", "gpt-4o")
 	if err != nil {
-		t.Fatalf("NewOpenAIModel() error = %v", err)
+		t.Fatalf("New() error = %v", err)
 	}
 
 	req := &model.LLMRequest{

@@ -26,7 +26,9 @@ type JSONSessionService struct {
 	log            logger.Logger          // Logger for debugging
 }
 
-// SessionData represents the structure of session data stored in JSON
+// SessionData represents the structure of session data stored in JSON.
+// Note: This type is internal to the package and not exported externally,
+// so the stuttering with session.SessionData is acceptable.
 type SessionData struct {
 	AppName   string           `json:"app_name"`
 	UserID    string           `json:"user_id"`
@@ -72,7 +74,7 @@ func (s *JSONSessionService) Create(ctx context.Context, req *session.CreateRequ
 	// Create session key for file storage
 	sessionKey := s.getSessionKey(req.AppName, req.UserID, sessionID)
 
-	// Check if session already exists - return error to match ADK behavior
+	// Check if session already exists - return error to match ADK behaviour
 	exists, err := s.fileProvider.Exists(ctx, sessionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check if session exists: %w", err)
@@ -324,7 +326,7 @@ func (s *JSONSessionService) AppendEvent(ctx context.Context, sess session.Sessi
 		return fmt.Errorf("failed to load session for event append: %w", err)
 	}
 
-	// Initialize events slice if nil
+	// Initialise events slice if nil
 	if sessionData.Events == nil {
 		sessionData.Events = make([]*session.Event, 0)
 	}
@@ -459,12 +461,12 @@ func (s *JSONSessionService) saveSession(ctx context.Context, sessionKey string,
 // sessionDataToADKSession converts internal session data to ADK session interface
 // Creates defensive copies of state and events to prevent external modifications
 func (s *JSONSessionService) sessionDataToADKSession(data *SessionData) session.Session {
-	// Initialize state if nil
+	// Initialise state if nil
 	if data.State == nil {
 		data.State = make(map[string]any)
 	}
 
-	// Initialize events if nil
+	// Initialise events if nil
 	if data.Events == nil {
 		data.Events = make([]*session.Event, 0)
 	}

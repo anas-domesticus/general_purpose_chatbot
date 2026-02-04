@@ -10,7 +10,7 @@ import (
 )
 
 // Config holds configuration for HTTP middleware application.
-// Use DefaultConfig() for sensible defaults, then customize as needed.
+// Use DefaultConfig() for sensible defaults, then customise as needed.
 type Config struct {
 	// Core middleware settings
 	Logger      logger.Logger   // Required for logging middleware

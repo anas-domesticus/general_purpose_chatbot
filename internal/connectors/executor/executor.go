@@ -15,12 +15,14 @@ import (
 // AgentFactory is a function that creates an agent instance with a platform-specific guidance provider and user info function
 type AgentFactory func(agents.PlatformSpecificGuidanceProvider, agents.UserInfoFunc) (agent.Agent, error)
 
+// Executor handles execution of connector operations
 type Executor struct {
 	sessionService session.Service
 	appName        string
 	agentFactory   AgentFactory
 }
 
+// NewExecutor creates a new Executor instance
 func NewExecutor(agentFactory AgentFactory, appName string, sessionService session.Service) (*Executor, error) {
 	if agentFactory == nil {
 		return nil, fmt.Errorf("agent factory cannot be nil")

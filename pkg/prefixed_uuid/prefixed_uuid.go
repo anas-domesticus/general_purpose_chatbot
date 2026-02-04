@@ -73,7 +73,7 @@ func (p PrefixedUUID) Equal(other PrefixedUUID) bool {
 }
 
 // MarshalJSON implements json.Marshaler.
-// Serializes the PrefixedUUID as a JSON string.
+// Serialises the PrefixedUUID as a JSON string.
 func (p PrefixedUUID) MarshalJSON() ([]byte, error) {
 	return json.Marshal(p.String())
 }

@@ -78,6 +78,7 @@ func (m *MigrationManager) createMigrator() (*migrate.Migrate, error) {
 	return migrator, nil
 }
 
+// Close closes the database connection
 func (m *MigrationManager) Close() error {
 	return m.db.Close()
 }

@@ -176,7 +176,7 @@ func TestIsZero(t *testing.T) {
 			wantZero: false,
 		},
 		{
-			name:     "fully initialized",
+			name:     "fully initialised",
 			p:        New("user"),
 			wantZero: false,
 		},

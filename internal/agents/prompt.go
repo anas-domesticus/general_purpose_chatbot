@@ -36,5 +36,5 @@ You can help with:
 Be concise, helpful, and professional in your responses.
 Ask clarifying questions when you need more context.
 
-Note: No system.md file found. Create a system.md file in the current directory to customize these instructions.`
+Note: No system.md file found. Create a system.md file in the current directory to customise these instructions.`
 }

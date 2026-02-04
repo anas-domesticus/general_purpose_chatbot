@@ -206,7 +206,7 @@ func TestJSONSessionService_CreateDuplicate(t *testing.T) {
 	_, err = service.Create(ctx, req)
 	require.NoError(t, err)
 
-	// Create duplicate session - should fail (ADK-compatible behavior)
+	// Create duplicate session - should fail (ADK-compatible behaviour)
 	_, err = service.Create(ctx, req)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already exists")

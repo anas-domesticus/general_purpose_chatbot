@@ -177,18 +177,23 @@ func (l *logger) convertToLogrusFields(fields []LogField) logrus.Fields {
 }
 
 // Helper functions for common field types
+
+// StringField returns a LogField for a string value.
 func StringField(key, value string) LogField {
 	return LogField{Key: key, Value: value}
 }
 
+// IntField returns a LogField for an integer value.
 func IntField(key string, value int) LogField {
 	return LogField{Key: key, Value: strconv.Itoa(value)}
 }
 
+// Int64Field returns a LogField for an int64 value.
 func Int64Field(key string, value int64) LogField {
 	return LogField{Key: key, Value: strconv.FormatInt(value, 10)}
 }
 
+// BoolField returns a LogField for a boolean value.
 func BoolField(key string, value bool) LogField {
 	return LogField{Key: key, Value: strconv.FormatBool(value)}
 }
@@ -236,14 +241,17 @@ func convertValue(value any) string {
 	}
 }
 
+// DurationField returns a LogField for a time.Duration value.
 func DurationField(key string, value time.Duration) LogField {
 	return LogField{Key: key, Value: value.String()}
 }
 
+// TimeField returns a LogField for a time.Time value formatted as RFC3339.
 func TimeField(key string, value time.Time) LogField {
 	return LogField{Key: key, Value: value.Format(time.RFC3339)}
 }
 
+// ErrorField returns a LogField for an error value.
 func ErrorField(err error) LogField {
 	if err == nil {
 		return LogField{Key: "error", Value: "<nil>"}
@@ -252,22 +260,28 @@ func ErrorField(err error) LogField {
 }
 
 // Common field constructors
+
+// CorrelationIDField returns a LogField for a correlation ID.
 func CorrelationIDField(id string) LogField {
 	return StringField(CorrelationIDFieldKey, id)
 }
 
+// HTTPMethodField returns a LogField for an HTTP method.
 func HTTPMethodField(method string) LogField {
 	return StringField("http_method", method)
 }
 
+// HTTPPathField returns a LogField for an HTTP path.
 func HTTPPathField(path string) LogField {
 	return StringField("http_path", path)
 }
 
+// HTTPStatusField returns a LogField for an HTTP status code.
 func HTTPStatusField(status int) LogField {
 	return IntField("http_status", status)
 }
 
+// ClientIPField returns a LogField for a client IP address.
 func ClientIPField(ip string) LogField {
 	return StringField("client_ip", ip)
 }
@@ -316,14 +330,18 @@ func (l *logger) GrpcRequestsInterceptor(
 }
 
 // Helper functions for gRPC fields
+
+// GrpcMethodField returns a LogField for a gRPC method name.
 func GrpcMethodField(method string) LogField {
 	return StringField("grpc_method", method)
 }
 
+// GrpcServiceField returns a LogField for a gRPC service name.
 func GrpcServiceField(service string) LogField {
 	return StringField("grpc_service", service)
 }
 
+// GrpcCodeField returns a LogField for a gRPC status code.
 func GrpcCodeField(code codes.Code) LogField {
 	return StringField("grpc_code", code.String())
 }

@@ -52,7 +52,7 @@ func NewConnector(config Config, exec *executor.Executor, sessionMgr session_man
 		sessionMgr: sessionMgr,
 	}
 
-	// Initialize Telegram bot with default handler
+	// Initialise Telegram bot with default handler
 	opts := []bot.Option{
 		bot.WithDefaultHandler(connector.handleUpdate),
 	}
@@ -67,7 +67,7 @@ func NewConnector(config Config, exec *executor.Executor, sessionMgr session_man
 	}
 
 	connector.bot = b
-	telegramLogger.Info("Telegram bot initialized successfully")
+	telegramLogger.Info("Telegram bot initialised successfully")
 
 	// Setup command handlers
 	connector.setupCommands()
@@ -277,11 +277,11 @@ Telegram also supports HTML formatting:
 - Maximum message length is 4096 characters`
 }
 
-// Ready returns nil if the Telegram connector is initialized and ready to receive requests,
+// Ready returns nil if the Telegram connector is initialised and ready to receive requests,
 // or an error if it's not ready.
 func (c *Connector) Ready() error {
 	if c.bot == nil {
-		return fmt.Errorf("telegram bot not initialized")
+		return fmt.Errorf("telegram bot not initialised")
 	}
 	return nil
 }
