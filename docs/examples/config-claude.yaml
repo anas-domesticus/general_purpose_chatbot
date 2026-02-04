@@ -15,8 +15,8 @@ llm:
   provider: claude  # claude, gemini, or openai
 
 # Anthropic/Claude configuration
+# Note: api_key should be set via ANTHROPIC_API_KEY environment variable
 anthropic:
-  api_key: ${ANTHROPIC_API_KEY}
   model: claude-sonnet-4-5-20250929
   api_base_url: https://api.anthropic.com
   max_retries: 3
@@ -25,20 +25,19 @@ anthropic:
   timeout: 30s
 
 # Slack configuration
+# Note: tokens should be set via SLACK_BOT_TOKEN and SLACK_APP_TOKEN environment variables
 slack:
-  bot_token: ${SLACK_BOT_TOKEN}
-  app_token: ${SLACK_APP_TOKEN}
   debug: false
 
 # Telegram configuration
+# Note: bot_token should be set via TELEGRAM_BOT_TOKEN environment variable
 telegram:
-  bot_token: ${TELEGRAM_BOT_TOKEN}
   debug: false
 
 # Session storage
-session:
-  backend: s3  # local, s3, or memory
-  local_dir: ./sessions
+storage:
+  backend: s3  # local or s3
+  local_dir: ./data
   s3_bucket: my-chatbot-sessions
   s3_prefix: sessions/
   s3_region: us-west-2
@@ -68,11 +67,11 @@ mcp:
     database:
       name: database
       enabled: true
-      transport: websocket  # not yet implemented
+      transport: websocket
       url: ws://db-server:8080/mcp
       auth:
         type: bearer
-        token: ${DB_MCP_TOKEN}
+        token: your-bearer-token  # set via environment variable for sensitive tokens
       headers:
         X-Custom-Header: value
 
@@ -90,15 +89,6 @@ logging:
 # Monitoring configuration
 monitoring:
   health_check_timeout: 10s
-  metrics_enabled: true
-  metrics_port: 9090
-
-# Database configuration (configured but not yet integrated)
-database:
-  url: ${DATABASE_URL}
-  max_connections: 25
-  conn_max_lifetime: 5m
-  conn_max_idle_time: 5m
 
 # Security configuration
 security:

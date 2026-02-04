@@ -28,9 +28,9 @@ Chat Platform (Slack/Telegram)
 - **Multi-LLM Support** - Support for Claude (Anthropic), GPT-4 (OpenAI), and Gemini (Google) with custom LLM implementations
 - **Multi-Platform Support** - Slack (Socket Mode) and Telegram connectors with extensible architecture
 - **MCP Tool Ecosystem** - Connect to any Model Context Protocol server for extended capabilities
-- **Session Management** - Persistent conversations with local, S3, or in-memory storage backends
+- **Session Management** - Persistent conversations with local or S3 storage backends
 - **Customizable Agents** - Configure agent behavior via `system.md` prompt files
-- **Production Ready** - Structured logging, Prometheus metrics, health checks, graceful shutdown
+- **Production Ready** - Structured logging, health checks, graceful shutdown
 
 ## Use Cases
 
@@ -61,39 +61,54 @@ Chain multiple MCP tools together for complex operations.
 
 ## Quick Start
 
-```bash
-# 1. Set your API keys (choose one LLM provider)
-export ANTHROPIC_API_KEY="sk-ant-your-api-key"  # For Claude
-# OR export OPENAI_API_KEY="sk-your-api-key"    # For OpenAI
-# OR export GEMINI_API_KEY="your-api-key"       # For Gemini
+Configuration can be provided via environment variables, a YAML config file, or both. When both are used, environment variables override values from the config file.
 
-# Set chat platform credentials
+### Option 1: Environment Variables Only
+
+```bash
+# Set required credentials
+export ANTHROPIC_API_KEY="sk-ant-your-api-key"
 export SLACK_BOT_TOKEN="xoxb-your-bot-token"
 export SLACK_APP_TOKEN="xapp-your-app-token"
 
-# 2. Create a minimal config
-cat > config.yaml << 'EOF'
-llm:
-  provider: claude  # or openai, or gemini
-
-anthropic:
-  api_key: ${ANTHROPIC_API_KEY}
-
-slack:
-  bot_token: ${SLACK_BOT_TOKEN}
-  app_token: ${SLACK_APP_TOKEN}
-
-session:
-  backend: memory
-EOF
-
-# 3. Create a system prompt (optional)
+# Create a system prompt (optional)
 cat > system.md << 'EOF'
 You are a helpful DevOps assistant. You help engineers query logs,
 check system status, and troubleshoot issues.
 EOF
 
-# 4. Run the chatbot
+# Run the chatbot
+./chatbot
+```
+
+### Option 2: Config File with Environment Variable Overrides
+
+```bash
+# Set sensitive credentials as environment variables (these override config file values)
+export ANTHROPIC_API_KEY="sk-ant-your-api-key"
+export SLACK_BOT_TOKEN="xoxb-your-bot-token"
+export SLACK_APP_TOKEN="xapp-your-app-token"
+
+# Create a config file for non-sensitive settings
+cat > config.yaml << 'EOF'
+llm:
+  provider: claude  # or openai, or gemini
+
+anthropic:
+  model: claude-sonnet-4-5-20250929
+
+storage:
+  backend: local
+  local_dir: ./data
+EOF
+
+# Create a system prompt (optional)
+cat > system.md << 'EOF'
+You are a helpful DevOps assistant. You help engineers query logs,
+check system status, and troubleshoot issues.
+EOF
+
+# Run the chatbot with config file
 ./chatbot --config config.yaml
 ```
 
@@ -123,6 +138,8 @@ Place this file in the working directory or mount it as a volume in containers.
 
 ### Application Config (`config.yaml`)
 
+Configuration is loaded from YAML file first, then environment variables override any matching values. Use environment variables for sensitive values like API keys.
+
 Minimal configuration for Claude:
 
 ```yaml
@@ -130,15 +147,13 @@ llm:
   provider: claude  # claude, gemini, or openai
 
 anthropic:
-  api_key: ${ANTHROPIC_API_KEY}
   model: claude-sonnet-4-5-20250929
+  # api_key loaded from ANTHROPIC_API_KEY env var
 
-slack:
-  bot_token: ${SLACK_BOT_TOKEN}
-  app_token: ${SLACK_APP_TOKEN}
+# slack credentials loaded from SLACK_BOT_TOKEN and SLACK_APP_TOKEN env vars
 
-session:
-  backend: memory  # local, s3, or memory
+storage:
+  backend: local  # local or s3
 
 mcp:
   enabled: true
@@ -174,7 +189,7 @@ mcp:
         - list_directory
         - read_file
 
-    # Database queries (websocket transport not yet implemented)
+    # Database queries via WebSocket
     database:
       name: database
       enabled: false
@@ -182,7 +197,7 @@ mcp:
       url: ws://db-server:8080/mcp
       auth:
         type: bearer  # bearer, basic, or api_key
-        token: ${DB_MCP_TOKEN}
+        token: your-bearer-token  # or set via environment variable
 
     # Custom internal tools
     internal-api:
@@ -231,12 +246,12 @@ mcp:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `SESSION_BACKEND` | Storage backend (local/s3/memory) | `memory` |
-| `SESSION_LOCAL_DIR` | Directory for local file storage | `./sessions` |
-| `SESSION_S3_BUCKET` | S3 bucket name | - |
-| `SESSION_S3_PREFIX` | S3 key prefix | `sessions` |
-| `SESSION_S3_REGION` | AWS region | - |
-| `SESSION_S3_PROFILE` | AWS profile name (optional) | - |
+| `STORAGE_BACKEND` | Storage backend (local/s3) | `local` |
+| `STORAGE_LOCAL_DIR` | Directory for local file storage | `./data` |
+| `STORAGE_S3_BUCKET` | S3 bucket name | - |
+| `STORAGE_S3_PREFIX` | S3 key prefix | `sessions` |
+| `STORAGE_S3_REGION` | AWS region | - |
+| `STORAGE_S3_PROFILE` | AWS profile name (optional) | - |
 
 #### Monitoring & Logging
 
@@ -244,8 +259,6 @@ mcp:
 |----------|-------------|---------|
 | `LOG_LEVEL` | Log level (debug/info/warn/error) | `info` |
 | `LOG_FORMAT` | Log format (json/text) | `json` |
-| `METRICS_ENABLED` | Enable Prometheus metrics | `true` |
-| `METRICS_PORT` | Metrics server port | `9090` |
 | `HEALTH_CHECK_TIMEOUT` | Health check timeout | `10s` |
 
 #### MCP Configuration
@@ -270,12 +283,11 @@ For complete configuration options, see the [example configs](docs/examples/).
 
 Choose where conversation history is stored:
 
-- **memory** - In-memory only (default, no persistence)
-- **local** - JSON files on disk (good for development)
+- **local** - JSON files on disk (default, good for development)
 - **s3** - AWS S3 bucket (production, scalable)
 
 ```yaml
-session:
+storage:
   backend: s3
   s3_bucket: my-chatbot-sessions
   s3_prefix: sessions/
@@ -292,9 +304,8 @@ session:
 | Agent Framework | Google ADK v0.3.0 |
 | Tool Protocol | MCP (Model Context Protocol) v0.7.0 |
 | Chat Platforms | Slack Socket Mode, Telegram Bot API |
-| Session Storage | Local filesystem, AWS S3, In-memory |
-| Observability | Logrus, Prometheus metrics |
-| Database | PostgreSQL (via pgx/sqlc) - configured but not yet integrated |
+| Session Storage | Local filesystem, AWS S3 |
+| Observability | Logrus |
 
 ## Configuration Examples
 
@@ -304,16 +315,13 @@ Complete configuration examples for each LLM provider:
 - [OpenAI](docs/examples/config-openai.yaml) - GPT-4 configuration example
 - [Gemini (Google)](docs/examples/config-gemini.yaml) - Gemini configuration example
 
-## Health & Metrics
+## Health Checks
 
 **Health Check Endpoints:**
 - `/health` - Combined liveness and readiness status
 - `/health/live` - Kubernetes liveness probe
 - `/health/ready` - Kubernetes readiness probe
 
-**Metrics Endpoint:**
-- `/metrics` - Prometheus metrics (port 9090 by default)
-
 ## Contributing
 
-Contributions welcome. See the architecture documentation for technical specifications.
+Contributions welcome.

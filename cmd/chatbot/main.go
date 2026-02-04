@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 
@@ -13,9 +14,13 @@ import (
 )
 
 func main() {
-	// Load configuration
+	// Parse command line flags
+	configPath := flag.String("config", "", "Path to YAML configuration file (optional, env vars override file values)")
+	flag.Parse()
+
+	// Load configuration from file (if provided) with environment variable overrides
 	cfg := &appconfig.AppConfig{}
-	if err := pkgconfig.GetConfigFromEnvVars(cfg); err != nil {
+	if err := pkgconfig.GetConfig(cfg, *configPath, true); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load configuration: %v\n", err)
 		os.Exit(1)
 	}
