@@ -67,10 +67,7 @@ func convertContentToMessage(content *genai.Content) (*openai.ChatCompletionMess
 		return &msg, nil
 
 	case "user":
-		parts, err := convertPartsToUserContent(content.Parts)
-		if err != nil {
-			return nil, err
-		}
+		parts := convertPartsToUserContent(content.Parts)
 		if len(parts) == 0 {
 			return nil, nil
 		}
@@ -88,10 +85,7 @@ func convertContentToMessage(content *genai.Content) (*openai.ChatCompletionMess
 
 	default:
 		// Default to user for unknown roles
-		parts, err := convertPartsToUserContent(content.Parts)
-		if err != nil {
-			return nil, err
-		}
+		parts := convertPartsToUserContent(content.Parts)
 		if len(parts) == 0 {
 			return nil, nil
 		}
@@ -101,7 +95,7 @@ func convertContentToMessage(content *genai.Content) (*openai.ChatCompletionMess
 }
 
 // convertPartsToUserContent converts genai.Parts to OpenAI user content parts.
-func convertPartsToUserContent(parts []*genai.Part) ([]openai.ChatCompletionContentPartUnionParam, error) {
+func convertPartsToUserContent(parts []*genai.Part) []openai.ChatCompletionContentPartUnionParam {
 	var result []openai.ChatCompletionContentPartUnionParam
 
 	for _, part := range parts {
@@ -133,7 +127,7 @@ func convertPartsToUserContent(parts []*genai.Part) ([]openai.ChatCompletionCont
 		}
 	}
 
-	return result, nil
+	return result
 }
 
 // convertAssistantContent converts assistant parts to OpenAI assistant message.
@@ -280,9 +274,9 @@ func mapFinishReason(finishReason string) genai.FinishReason {
 // transformToolsToOpenAI converts ADK tool definitions to OpenAI ChatCompletionToolParam.
 // ADK tools are stored as tool.Tool interface objects with a Declaration() method that
 // returns *genai.FunctionDeclaration containing the tool's schema.
-func transformToolsToOpenAI(tools map[string]any) ([]openai.ChatCompletionToolParam, error) {
+func transformToolsToOpenAI(tools map[string]any) []openai.ChatCompletionToolParam {
 	if tools == nil {
-		return nil, nil
+		return nil
 	}
 
 	// Define interface for tools that have declarations
@@ -345,7 +339,7 @@ func transformToolsToOpenAI(tools map[string]any) ([]openai.ChatCompletionToolPa
 		openaiTools = append(openaiTools, toolParam)
 	}
 
-	return openaiTools, nil
+	return openaiTools
 }
 
 // CreateToolResultMessage creates a tool result message for OpenAI.
