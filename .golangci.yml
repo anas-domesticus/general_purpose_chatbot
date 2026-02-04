@@ -17,7 +17,8 @@ formatters:
     - goimports
   settings:
     goimports:
-      local-prefixes: github.com/lewisedginton/general-purpose-chatbot
+      local-prefixes:
+        - github.com/lewisedginton/general-purpose-chatbot
 
 linters:
   enable:
@@ -58,8 +59,6 @@ linters:
     - tagliatelle
 
   settings:
-    govet:
-      check-shadowing: true
     gocyclo:
       min-complexity: 15
     goconst:
