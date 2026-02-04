@@ -1,4 +1,4 @@
-package session
+package session_manager
 
 import (
 	"bytes"
@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/lewisedginton/general_purpose_chatbot/internal/storage_manager"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"google.golang.org/adk/session"
 )
@@ -17,9 +18,9 @@ import (
 // eventIDCounter ensures unique event IDs even when time.Now().UnixNano() returns the same value
 var eventIDCounter atomic.Uint64
 
-// JSONSessionService implements the session.Service interface using JSON file storage
-type JSONSessionService struct {
-	fileProvider   FileProvider
+// SessionService implements the session.Service interface using JSON file storage.
+type SessionService struct {
+	fileProvider   storage_manager.FileProvider
 	mutex          sync.RWMutex
 	sessionLocks   map[string]*sync.Mutex // Per-session locks to prevent concurrent modifications
 	sessionLockMux sync.Mutex             // Protects the sessionLocks map itself
@@ -27,8 +28,6 @@ type JSONSessionService struct {
 }
 
 // SessionData represents the structure of session data stored in JSON.
-// Note: This type is internal to the package and not exported externally,
-// so the stuttering with session.SessionData is acceptable.
 type SessionData struct {
 	AppName   string           `json:"app_name"`
 	UserID    string           `json:"user_id"`
@@ -39,17 +38,25 @@ type SessionData struct {
 	Events    []*session.Event `json:"events,omitempty"` // Session events
 }
 
-// NewJSONSessionService creates a new JSON-based session service
-func NewJSONSessionService(fileProvider FileProvider, log logger.Logger) *JSONSessionService {
-	return &JSONSessionService{
-		fileProvider: fileProvider,
+// NewSessionService creates a new session service with the given file provider.
+// The provider should be obtained from a StorageManager, typically with a
+// "sessions" namespace prefix.
+func NewSessionService(provider storage_manager.FileProvider, log logger.Logger) *SessionService {
+	if provider == nil {
+		panic("file provider cannot be nil")
+	}
+	if log == nil {
+		panic("logger cannot be nil")
+	}
+	return &SessionService{
+		fileProvider: provider,
 		sessionLocks: make(map[string]*sync.Mutex),
 		log:          log,
 	}
 }
 
-// Create creates a new session
-func (s *JSONSessionService) Create(ctx context.Context, req *session.CreateRequest) (*session.CreateResponse, error) {
+// Create creates a new session.
+func (s *SessionService) Create(ctx context.Context, req *session.CreateRequest) (*session.CreateResponse, error) {
 	if req == nil {
 		return nil, fmt.Errorf("create request cannot be nil")
 	}
@@ -117,8 +124,8 @@ func (s *JSONSessionService) Create(ctx context.Context, req *session.CreateRequ
 	}, nil
 }
 
-// Get retrieves an existing session
-func (s *JSONSessionService) Get(ctx context.Context, req *session.GetRequest) (*session.GetResponse, error) {
+// Get retrieves an existing session.
+func (s *SessionService) Get(ctx context.Context, req *session.GetRequest) (*session.GetResponse, error) {
 	if req == nil {
 		return nil, fmt.Errorf("get request cannot be nil")
 	}
@@ -166,8 +173,8 @@ func (s *JSONSessionService) Get(ctx context.Context, req *session.GetRequest) (
 	}, nil
 }
 
-// filterEvents applies filtering based on GetRequest parameters
-func (s *JSONSessionService) filterEvents(events []*session.Event, req *session.GetRequest) []*session.Event {
+// filterEvents applies filtering based on GetRequest parameters.
+func (s *SessionService) filterEvents(events []*session.Event, req *session.GetRequest) []*session.Event {
 	if events == nil {
 		return nil
 	}
@@ -197,8 +204,8 @@ func (s *JSONSessionService) filterEvents(events []*session.Event, req *session.
 	return filteredEvents
 }
 
-// List lists sessions matching the request criteria
-func (s *JSONSessionService) List(ctx context.Context, req *session.ListRequest) (*session.ListResponse, error) {
+// List lists sessions matching the request criteria.
+func (s *SessionService) List(ctx context.Context, req *session.ListRequest) (*session.ListResponse, error) {
 	if req == nil {
 		return nil, fmt.Errorf("list request cannot be nil")
 	}
@@ -245,8 +252,8 @@ func (s *JSONSessionService) List(ctx context.Context, req *session.ListRequest)
 	}, nil
 }
 
-// Delete removes a session
-func (s *JSONSessionService) Delete(ctx context.Context, req *session.DeleteRequest) error {
+// Delete removes a session.
+func (s *SessionService) Delete(ctx context.Context, req *session.DeleteRequest) error {
 	if req == nil {
 		return fmt.Errorf("delete request cannot be nil")
 	}
@@ -264,8 +271,8 @@ func (s *JSONSessionService) Delete(ctx context.Context, req *session.DeleteRequ
 	return nil
 }
 
-// AppendEvent appends an event to a session
-func (s *JSONSessionService) AppendEvent(ctx context.Context, sess session.Session, event *session.Event) error {
+// AppendEvent appends an event to a session.
+func (s *SessionService) AppendEvent(ctx context.Context, sess session.Session, event *session.Event) error {
 	if sess == nil {
 		return fmt.Errorf("session cannot be nil")
 	}
@@ -361,15 +368,15 @@ func (s *JSONSessionService) AppendEvent(ctx context.Context, sess session.Sessi
 	return nil
 }
 
-// isTemporaryKey checks if a state key is temporary (should not be persisted)
+// isTemporaryKey checks if a state key is temporary (should not be persisted).
 func isTemporaryKey(key string) bool {
 	return len(key) >= len(session.KeyPrefixTemp) && key[:len(session.KeyPrefixTemp)] == session.KeyPrefixTemp
 }
 
 // Helper methods
 
-// getSessionLock returns a session-specific lock, creating it if necessary
-func (s *JSONSessionService) getSessionLock(sessionKey string) *sync.Mutex {
+// getSessionLock returns a session-specific lock, creating it if necessary.
+func (s *SessionService) getSessionLock(sessionKey string) *sync.Mutex {
 	s.sessionLockMux.Lock()
 	defer s.sessionLockMux.Unlock()
 
@@ -383,16 +390,16 @@ func (s *JSONSessionService) getSessionLock(sessionKey string) *sync.Mutex {
 	return lock
 }
 
-// getSessionKey generates a consistent key for session storage
-func (s *JSONSessionService) getSessionKey(appName, userID, sessionID string) string {
+// getSessionKey generates a consistent key for session storage.
+func (s *SessionService) getSessionKey(appName, userID, sessionID string) string {
 	if sessionID == "" {
 		return fmt.Sprintf("%s/%s/", appName, userID)
 	}
 	return fmt.Sprintf("%s/%s/%s.json", appName, userID, sessionID)
 }
 
-// loadSession loads session data from file storage
-func (s *JSONSessionService) loadSession(ctx context.Context, sessionKey string) (*SessionData, error) {
+// loadSession loads session data from file storage.
+func (s *SessionService) loadSession(ctx context.Context, sessionKey string) (*SessionData, error) {
 	start := time.Now()
 	data, err := s.fileProvider.Read(ctx, sessionKey)
 	if err != nil {
@@ -427,8 +434,8 @@ func (s *JSONSessionService) loadSession(ctx context.Context, sessionKey string)
 	return &sessionData, nil
 }
 
-// saveSession saves session data to file storage
-func (s *JSONSessionService) saveSession(ctx context.Context, sessionKey string, sessionData *SessionData) error {
+// saveSession saves session data to file storage.
+func (s *SessionService) saveSession(ctx context.Context, sessionKey string, sessionData *SessionData) error {
 	start := time.Now()
 
 	// Update timestamp
@@ -458,9 +465,9 @@ func (s *JSONSessionService) saveSession(ctx context.Context, sessionKey string,
 	return nil
 }
 
-// sessionDataToADKSession converts internal session data to ADK session interface
-// Creates defensive copies of state and events to prevent external modifications
-func (s *JSONSessionService) sessionDataToADKSession(data *SessionData) session.Session {
+// sessionDataToADKSession converts internal session data to ADK session interface.
+// Creates defensive copies of state and events to prevent external modifications.
+func (s *SessionService) sessionDataToADKSession(data *SessionData) session.Session {
 	// Initialise state if nil
 	if data.State == nil {
 		data.State = make(map[string]any)
@@ -491,7 +498,7 @@ func (s *JSONSessionService) sessionDataToADKSession(data *SessionData) session.
 	}
 }
 
-// adkSession implements the session.Session interface
+// adkSession implements the session.Session interface.
 type adkSession struct {
 	appName        string
 	userID         string
@@ -502,42 +509,42 @@ type adkSession struct {
 	events         session.Events
 }
 
-// AppName returns the application name
+// AppName returns the application name.
 func (s *adkSession) AppName() string {
 	return s.appName
 }
 
-// UserID returns the user ID
+// UserID returns the user ID.
 func (s *adkSession) UserID() string {
 	return s.userID
 }
 
-// ID returns the session ID
+// ID returns the session ID.
 func (s *adkSession) ID() string {
 	return s.sessionID
 }
 
-// State returns the session state
+// State returns the session state.
 func (s *adkSession) State() session.State {
 	return s.state
 }
 
-// Events returns the session events
+// Events returns the session events.
 func (s *adkSession) Events() session.Events {
 	return s.events
 }
 
-// LastUpdateTime returns when the session was last updated
+// LastUpdateTime returns when the session was last updated.
 func (s *adkSession) LastUpdateTime() time.Time {
 	return s.lastUpdateTime
 }
 
-// generateSessionID creates a new unique session ID
+// generateSessionID creates a new unique session ID.
 func generateSessionID() string {
 	return fmt.Sprintf("session_%d", time.Now().UnixNano())
 }
 
-// sessionState implements the session.State interface
+// sessionState implements the session.State interface.
 // IMPORTANT: Changes made via Set() are NOT persisted to storage.
 // State changes must be made through event.Actions.StateDelta for persistence.
 // This is a read-only view with in-memory modification capability for the current session lifecycle.
@@ -546,20 +553,20 @@ type sessionState struct {
 	mutex sync.RWMutex
 }
 
-// Get retrieves the value associated with a given key
+// Get retrieves the value associated with a given key.
 func (s *sessionState) Get(key string) (any, error) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
 	value, exists := s.data[key]
 	if !exists {
-		return nil, fmt.Errorf("key %s does not exist", key) // TODO: Use proper ErrStateKeyNotExist
+		return nil, fmt.Errorf("key %s does not exist", key)
 	}
 
 	return value, nil
 }
 
-// Set assigns the given value to the given key
+// Set assigns the given value to the given key.
 // WARNING: This change is NOT persisted to storage. It only modifies the in-memory state.
 // To persist state changes, use event.Actions.StateDelta when appending events.
 func (s *sessionState) Set(key string, value any) error {
@@ -574,7 +581,7 @@ func (s *sessionState) Set(key string, value any) error {
 	return nil
 }
 
-// All returns an iterator over all key-value pairs
+// All returns an iterator over all key-value pairs.
 func (s *sessionState) All() iter.Seq2[string, any] {
 	return func(yield func(string, any) bool) {
 		s.mutex.RLock()
@@ -588,13 +595,13 @@ func (s *sessionState) All() iter.Seq2[string, any] {
 	}
 }
 
-// sessionEvents implements the session.Events interface
+// sessionEvents implements the session.Events interface.
 type sessionEvents struct {
 	events []*session.Event
 	mutex  sync.RWMutex
 }
 
-// All returns an iterator over all events
+// All returns an iterator over all events.
 func (e *sessionEvents) All() iter.Seq[*session.Event] {
 	return func(yield func(*session.Event) bool) {
 		e.mutex.RLock()
@@ -608,7 +615,7 @@ func (e *sessionEvents) All() iter.Seq[*session.Event] {
 	}
 }
 
-// Len returns the total number of events
+// Len returns the total number of events.
 func (e *sessionEvents) Len() int {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
@@ -616,7 +623,7 @@ func (e *sessionEvents) Len() int {
 	return len(e.events)
 }
 
-// At returns the event at the specified index
+// At returns the event at the specified index.
 func (e *sessionEvents) At(i int) *session.Event {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
@@ -628,7 +635,7 @@ func (e *sessionEvents) At(i int) *session.Event {
 	return e.events[i]
 }
 
-// convertJSONNumbers converts json.Number values in a map back to their appropriate Go types
+// convertJSONNumbers converts json.Number values in a map back to their appropriate Go types.
 func convertJSONNumbers(m map[string]any) {
 	for key, value := range m {
 		switch v := value.(type) {

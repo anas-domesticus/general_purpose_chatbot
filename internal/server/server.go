@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/agents"
@@ -24,12 +23,11 @@ import (
 	"github.com/lewisedginton/general_purpose_chatbot/internal/models/anthropic"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/models/openai"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/monitoring"
-	intsession "github.com/lewisedginton/general_purpose_chatbot/internal/session"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/session_manager"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/storage_manager"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/model/gemini"
-	"google.golang.org/adk/session"
 	"google.golang.org/genai"
 )
 
@@ -45,7 +43,7 @@ type Server struct {
 	executor          *executor.Executor
 	slackConnector    *slack.Connector
 	telegramConnector *telegram.Connector
-	sessionService    session.Service
+	storageManager    *storage_manager.StorageManager
 	sessionManager    session_manager.Manager
 	cancel            context.CancelFunc
 }
@@ -74,20 +72,20 @@ func New(ctx context.Context, cfg *appconfig.AppConfig, log logger.Logger) (*Ser
 		return nil, fmt.Errorf("failed to create chat agent factory: %w", err)
 	}
 
-	// Create session service based on configuration
-	s.sessionService, err = s.createSessionService(ctx)
+	// Create storage manager (handles persistence for sessions and metadata)
+	s.storageManager, err = s.createStorageManager(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create session service: %w", err)
+		return nil, fmt.Errorf("failed to create storage manager: %w", err)
 	}
 
-	// Create session manager for tracking live sessions
+	// Create session manager (includes ADK session service)
 	s.sessionManager, err = s.createSessionManager(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session manager: %w", err)
 	}
 
 	// Create executor with agent factory (shared across all platforms)
-	s.executor, err = executor.NewExecutor(chatAgentFactory, "chatbot", s.sessionService)
+	s.executor, err = executor.NewExecutor(chatAgentFactory, "chatbot", s.sessionManager.GetADKSessionService())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create executor: %w", err)
 	}
@@ -264,39 +262,37 @@ func (s *Server) startHealthServer(ctx context.Context) error {
 	return nil
 }
 
-// createSessionService creates a session service based on configuration
-func (s *Server) createSessionService(ctx context.Context) (session.Service, error) {
-	cfg := &s.cfg.Session
+// createStorageManager creates a storage manager based on configuration
+func (s *Server) createStorageManager(ctx context.Context) (*storage_manager.StorageManager, error) {
+	cfg := &s.cfg.Storage
 
 	switch cfg.Backend {
 	case "local":
-		s.log.Info("Using local file-based session storage", logger.StringField("directory", cfg.LocalDir))
+		s.log.Info("Using local file-based storage", logger.StringField("directory", cfg.LocalDir))
 
 		// Ensure directory exists
 		if err := os.MkdirAll(cfg.LocalDir, 0755); err != nil {
-			return nil, fmt.Errorf("failed to create session directory: %w", err)
+			return nil, fmt.Errorf("failed to create storage directory: %w", err)
 		}
 
-		return intsession.NewSessionService(intsession.StorageConfig{
-			Backend: "local",
-			Local:   intsession.LocalConfig{BaseDir: cfg.LocalDir},
-			Logger:  s.log,
+		return storage_manager.New(storage_manager.Config{
+			Backend: storage_manager.BackendLocal,
+			LocalConfig: &storage_manager.LocalConfig{
+				BaseDir: cfg.LocalDir,
+			},
 		})
 
 	case "s3":
-		s.log.Info("Using S3-based session storage",
+		s.log.Info("Using S3-based storage",
 			logger.StringField("bucket", cfg.S3Bucket),
 			logger.StringField("prefix", cfg.S3Prefix),
 			logger.StringField("region", cfg.S3Region))
 
 		if cfg.S3Bucket == "" {
-			return nil, fmt.Errorf("S3 bucket is required when using S3 session storage")
+			return nil, fmt.Errorf("S3 bucket is required when using S3 storage")
 		}
 
 		// Load AWS configuration
-		var awsCfg aws.Config
-		var err error
-
 		configOptions := []func(*awsconfig.LoadOptions) error{}
 
 		if cfg.S3Profile != "" {
@@ -307,101 +303,36 @@ func (s *Server) createSessionService(ctx context.Context) (session.Service, err
 			configOptions = append(configOptions, awsconfig.WithRegion(cfg.S3Region))
 		}
 
-		awsCfg, err = awsconfig.LoadDefaultConfig(ctx, configOptions...)
+		awsCfg, err := awsconfig.LoadDefaultConfig(ctx, configOptions...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load AWS config: %w", err)
 		}
 
 		// Create S3 client
 		s3Client := s3.NewFromConfig(awsCfg)
-		awsS3Client := intsession.NewAWSS3Client(s3Client)
 
-		return intsession.NewSessionService(intsession.StorageConfig{
-			Backend: "s3",
-			S3: intsession.S3Config{
-				Bucket:   cfg.S3Bucket,
-				Prefix:   cfg.S3Prefix,
-				S3Client: awsS3Client,
+		return storage_manager.New(storage_manager.Config{
+			Backend: storage_manager.BackendS3,
+			S3Config: &storage_manager.S3Config{
+				Bucket: cfg.S3Bucket,
+				Prefix: cfg.S3Prefix,
+				Client: s3Client,
 			},
-			Logger: s.log,
 		})
 
-	case "memory":
-		s.log.Info("Using in-memory session storage")
-		return session.InMemoryService(), nil
-
 	default:
-		return nil, fmt.Errorf("unsupported session backend: %s (must be 'local', 's3', or 'memory')", cfg.Backend)
+		return nil, fmt.Errorf("unsupported storage backend: %s (must be 'local' or 's3')", cfg.Backend)
 	}
 }
 
-// createSessionManager creates a session manager based on configuration
+// createSessionManager creates a session manager using the storage manager
 func (s *Server) createSessionManager(ctx context.Context) (session_manager.Manager, error) {
-	cfg := &s.cfg.Session
-	var fileProvider intsession.FileProvider
-	var metadataFile string
-
-	switch cfg.Backend {
-	case "local":
-		s.log.Info("Using local file-based session manager", logger.StringField("directory", cfg.LocalDir))
-
-		// Ensure directory exists
-		if err := os.MkdirAll(cfg.LocalDir, 0755); err != nil {
-			return nil, fmt.Errorf("failed to create session directory: %w", err)
-		}
-
-		fileProvider = intsession.NewLocalFileProvider(cfg.LocalDir)
-		metadataFile = "sessions_metadata.json"
-
-	case "s3":
-		s.log.Info("Using S3-based session manager",
-			logger.StringField("bucket", cfg.S3Bucket),
-			logger.StringField("prefix", cfg.S3Prefix))
-
-		if cfg.S3Bucket == "" {
-			return nil, fmt.Errorf("S3 bucket is required when using S3 session storage")
-		}
-
-		// Load AWS configuration
-		var awsCfg aws.Config
-		var err error
-
-		configOptions := []func(*awsconfig.LoadOptions) error{}
-
-		if cfg.S3Profile != "" {
-			configOptions = append(configOptions, awsconfig.WithSharedConfigProfile(cfg.S3Profile))
-		}
-
-		if cfg.S3Region != "" {
-			configOptions = append(configOptions, awsconfig.WithRegion(cfg.S3Region))
-		}
-
-		awsCfg, err = awsconfig.LoadDefaultConfig(ctx, configOptions...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load AWS config: %w", err)
-		}
-
-		// Create S3 client
-		s3Client := s3.NewFromConfig(awsCfg)
-		awsS3Client := intsession.NewAWSS3Client(s3Client)
-
-		fileProvider = intsession.NewS3FileProvider(cfg.S3Bucket, cfg.S3Prefix, awsS3Client)
-		metadataFile = "sessions_metadata.json"
-
-	case "memory":
-		s.log.Info("Using in-memory session manager (not persisted)")
-		// For memory backend, use a temporary directory for metadata
-		tmpDir := os.TempDir()
-		fileProvider = intsession.NewLocalFileProvider(tmpDir)
-		metadataFile = "sessions_metadata_memory.json"
-
-	default:
-		return nil, fmt.Errorf("unsupported session backend: %s (must be 'local', 's3', or 'memory')", cfg.Backend)
-	}
+	// Use storage manager with "sessions" namespace (same as session service)
+	provider := s.storageManager.GetProvider("sessions")
 
 	return session_manager.New(session_manager.Config{
-		MetadataFile: metadataFile,
-		FileProvider: fileProvider,
+		MetadataFile: "sessions.json",
+		FileProvider: provider,
 		Logger:       s.log,
 	})
 }

@@ -10,13 +10,6 @@ import (
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
 
-// LLM provider constants
-const (
-	ProviderClaude = "claude"
-	ProviderGemini = "gemini"
-	ProviderOpenAI = "openai"
-)
-
 // AppConfig holds all application configuration
 type AppConfig struct {
 	// Service configuration
@@ -62,157 +55,11 @@ type AppConfig struct {
 	// Telegram configuration
 	Telegram TelegramConfig `yaml:"telegram,inline"`
 
-	// Session storage configuration
-	Session SessionConfig `yaml:"session,inline"`
+	// Storage configuration (persistence layer)
+	Storage StorageConfig `yaml:"storage,inline"`
 
 	// Health check configuration
 	Health HealthConfig `yaml:"health,inline"`
-}
-
-// SlackConfig holds Slack-specific configuration
-type SlackConfig struct {
-	BotToken string `env:"SLACK_BOT_TOKEN" yaml:"bot_token"`
-	AppToken string `env:"SLACK_APP_TOKEN" yaml:"app_token"`
-	Debug    bool   `env:"SLACK_DEBUG" yaml:"debug"`
-}
-
-// Enabled returns true if Slack is configured with both tokens
-func (c *SlackConfig) Enabled() bool {
-	return c.BotToken != "" && c.AppToken != ""
-}
-
-// TelegramConfig holds Telegram-specific configuration
-type TelegramConfig struct {
-	BotToken string `env:"TELEGRAM_BOT_TOKEN" yaml:"bot_token"`
-	Debug    bool   `env:"TELEGRAM_DEBUG" yaml:"debug"`
-}
-
-// Enabled returns true if Telegram is configured with a bot token
-func (c *TelegramConfig) Enabled() bool {
-	return c.BotToken != ""
-}
-
-// SessionConfig holds session storage configuration
-type SessionConfig struct {
-	Backend   string `env:"SESSION_BACKEND" yaml:"backend" default:"memory"`         // "local", "s3", or "memory"
-	LocalDir  string `env:"SESSION_LOCAL_DIR" yaml:"local_dir" default:"./sessions"` // Base directory for local storage
-	S3Bucket  string `env:"SESSION_S3_BUCKET" yaml:"s3_bucket"`                      // S3 bucket name
-	S3Prefix  string `env:"SESSION_S3_PREFIX" yaml:"s3_prefix" default:"sessions"`   // S3 object key prefix
-	S3Region  string `env:"SESSION_S3_REGION" yaml:"s3_region"`                      // AWS region
-	S3Profile string `env:"SESSION_S3_PROFILE" yaml:"s3_profile"`                    // AWS profile name (optional)
-}
-
-// HealthConfig holds health check configuration
-type HealthConfig struct {
-	Enabled          bool          `env:"HEALTH_ENABLED" yaml:"enabled" default:"true"`
-	Port             int           `env:"HEALTH_PORT" yaml:"port" default:"8080"`
-	LivenessPath     string        `env:"HEALTH_LIVENESS_PATH" yaml:"liveness_path" default:"/health/live"`
-	ReadinessPath    string        `env:"HEALTH_READINESS_PATH" yaml:"readiness_path" default:"/health/ready"`
-	CombinedPath     string        `env:"HEALTH_COMBINED_PATH" yaml:"combined_path" default:"/health"`
-	Timeout          time.Duration `env:"HEALTH_TIMEOUT" yaml:"timeout" default:"10s"`
-	FailureThreshold int           `env:"HEALTH_FAILURE_THRESHOLD" yaml:"failure_threshold" default:"3"`
-}
-
-// LLMConfig holds LLM provider selection configuration
-type LLMConfig struct {
-	// Provider specifies which LLM provider to use: "claude", "gemini", or "openai"
-	Provider string `env:"LLM_PROVIDER" yaml:"provider" default:"claude"`
-}
-
-// AnthropicConfig holds Anthropic-specific configuration
-type AnthropicConfig struct {
-	APIKey         string        `env:"ANTHROPIC_API_KEY" yaml:"api_key"`
-	Model          string        `env:"CLAUDE_MODEL" yaml:"model" default:"claude-sonnet-4-5-20250929"`
-	APIBaseURL     string        `env:"ANTHROPIC_API_URL" yaml:"api_base_url" default:"https://api.anthropic.com"`
-	MaxRetries     int           `env:"ANTHROPIC_MAX_RETRIES" yaml:"max_retries" default:"3"`
-	InitialBackoff time.Duration `env:"ANTHROPIC_INITIAL_BACKOFF" yaml:"initial_backoff" default:"1s"`
-	MaxBackoff     time.Duration `env:"ANTHROPIC_MAX_BACKOFF" yaml:"max_backoff" default:"10s"`
-	Timeout        time.Duration `env:"ANTHROPIC_TIMEOUT" yaml:"timeout" default:"30s"`
-}
-
-// GeminiConfig holds Google Gemini-specific configuration
-type GeminiConfig struct {
-	APIKey  string `env:"GEMINI_API_KEY" yaml:"api_key"`
-	Model   string `env:"GEMINI_MODEL" yaml:"model" default:"gemini-2.5-flash"`
-	Project string `env:"GOOGLE_CLOUD_PROJECT" yaml:"project"` // Optional: for Vertex AI
-	Region  string `env:"GOOGLE_CLOUD_REGION" yaml:"region"`   // Optional: for Vertex AI
-}
-
-// OpenAIConfig holds OpenAI-specific configuration
-type OpenAIConfig struct {
-	APIKey     string        `env:"OPENAI_API_KEY" yaml:"api_key"`
-	Model      string        `env:"OPENAI_MODEL" yaml:"model" default:"gpt-4"`
-	APIBaseURL string        `env:"OPENAI_API_URL" yaml:"api_base_url" default:"https://api.openai.com/v1"`
-	MaxRetries int           `env:"OPENAI_MAX_RETRIES" yaml:"max_retries" default:"3"`
-	Timeout    time.Duration `env:"OPENAI_TIMEOUT" yaml:"timeout" default:"30s"`
-}
-
-// LoggingConfig holds logging configuration
-type LoggingConfig struct {
-	Level  string `env:"LOG_LEVEL" yaml:"level" default:"info"`
-	Format string `env:"LOG_FORMAT" yaml:"format" default:"json"`
-}
-
-// MonitoringConfig holds monitoring configuration
-type MonitoringConfig struct {
-	HealthCheckTimeout time.Duration `env:"HEALTH_CHECK_TIMEOUT" yaml:"health_check_timeout" default:"10s"`
-	MetricsEnabled     bool          `env:"METRICS_ENABLED" yaml:"metrics_enabled" default:"true"`
-	MetricsPort        int           `env:"METRICS_PORT" yaml:"metrics_port" default:"9090"`
-}
-
-// DatabaseConfig holds database configuration
-type DatabaseConfig struct {
-	URL             string        `env:"DATABASE_URL" yaml:"url"`
-	MaxConnections  int           `env:"DATABASE_MAX_CONNECTIONS" yaml:"max_connections" default:"25"`
-	ConnMaxLifetime time.Duration `env:"DATABASE_CONN_MAX_LIFETIME" yaml:"conn_max_lifetime" default:"5m"`
-	ConnMaxIdleTime time.Duration `env:"DATABASE_CONN_MAX_IDLE_TIME" yaml:"conn_max_idle_time" default:"5m"`
-}
-
-// SecurityConfig holds security-related configuration
-type SecurityConfig struct {
-	CORSAllowedOrigins []string `env:"CORS_ALLOWED_ORIGINS" yaml:"cors_allowed_origins" default:"http://localhost:3000,http://localhost:8080"`
-	MaxRequestSize     int64    `env:"MAX_REQUEST_SIZE" yaml:"max_request_size" default:"10485760"` // 10MB default
-	RateLimitEnabled   bool     `env:"RATE_LIMIT_ENABLED" yaml:"rate_limit_enabled" default:"true"`
-	RateLimitRPS       int      `env:"RATE_LIMIT_RPS" yaml:"rate_limit_rps" default:"100"`
-}
-
-// MCPConfig holds Model Context Protocol configuration
-type MCPConfig struct {
-	Enabled   bool                       `env:"MCP_ENABLED" yaml:"enabled" default:"false"`
-	Servers   map[string]MCPServerConfig `yaml:"servers"`
-	Discovery MCPDiscoveryConfig         `yaml:"discovery"`
-	Timeout   time.Duration              `env:"MCP_TIMEOUT" yaml:"timeout" default:"30s"`
-}
-
-// MCPServerConfig holds configuration for individual MCP servers
-type MCPServerConfig struct {
-	Name        string            `yaml:"name"`
-	Transport   string            `yaml:"transport"` // stdio, websocket, sse
-	Command     string            `yaml:"command,omitempty"`
-	Args        []string          `yaml:"args,omitempty"`
-	URL         string            `yaml:"url,omitempty"`
-	Headers     map[string]string `yaml:"headers,omitempty"`
-	Auth        *MCPAuthConfig    `yaml:"auth,omitempty"`
-	Environment map[string]string `yaml:"environment,omitempty"`
-	ToolFilter  []string          `yaml:"tool_filter,omitempty"`
-	Enabled     bool              `yaml:"enabled" default:"true"`
-}
-
-// MCPAuthConfig holds authentication configuration for MCP servers
-type MCPAuthConfig struct {
-	Type   string `yaml:"type"` // bearer, basic, api_key
-	Token  string `yaml:"token,omitempty"`
-	User   string `yaml:"user,omitempty"`
-	Pass   string `yaml:"pass,omitempty"`
-	APIKey string `yaml:"api_key,omitempty"`
-	Header string `yaml:"header,omitempty"`
-}
-
-// MCPDiscoveryConfig holds configuration for MCP server discovery
-type MCPDiscoveryConfig struct {
-	Enabled         bool          `yaml:"enabled" default:"true"`
-	RefreshInterval time.Duration `yaml:"refresh_interval" default:"5m"`
-	HealthChecks    bool          `yaml:"health_checks" default:"true"`
 }
 
 // Validate validates the configuration and returns an error if invalid
@@ -445,13 +292,6 @@ func (c *AppConfig) GetAnthropicRetryConfig() AnthropicRetryConfig {
 	}
 }
 
-// AnthropicRetryConfig represents retry configuration for Anthropic
-type AnthropicRetryConfig struct {
-	MaxRetries     int
-	InitialBackoff time.Duration
-	MaxBackoff     time.Duration
-}
-
 // GetLLMModel returns the model name for the configured LLM provider
 func (c *AppConfig) GetLLMModel() string {
 	switch strings.ToLower(c.LLM.Provider) {
@@ -508,12 +348,10 @@ func (c *AppConfig) LogConfig(log logger.Logger) {
 		log.Info("Telegram integration enabled")
 	}
 
-	// Log session storage configuration
-	if c.Session.Backend != "" && c.Session.Backend != "memory" {
-		log.Info("Session storage configured",
-			logger.StringField("backend", c.Session.Backend),
-		)
-	}
+	// Log storage configuration
+	log.Info("Storage configured",
+		logger.StringField("backend", c.Storage.Backend),
+	)
 
 	// Log health check configuration
 	if c.Health.Enabled {

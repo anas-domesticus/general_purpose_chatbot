@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lewisedginton/general_purpose_chatbot/internal/session"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/storage_manager"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,7 +19,7 @@ func setupTestManager(t *testing.T) (Manager, string) {
 	tmpDir := t.TempDir()
 	metadataFile := filepath.Join(tmpDir, "sessions_metadata.json")
 
-	fileProvider := session.NewLocalFileProvider(tmpDir)
+	fileProvider := storage_manager.NewLocalFileProvider(tmpDir)
 
 	mgr, err := New(Config{
 		MetadataFile: metadataFile,
@@ -41,7 +41,7 @@ func TestNew(t *testing.T) {
 			name: "valid config",
 			config: Config{
 				MetadataFile: "/tmp/test.json",
-				FileProvider: session.NewLocalFileProvider("/tmp"),
+				FileProvider: storage_manager.NewLocalFileProvider("/tmp"),
 				Logger:       logger.NewLogger(logger.Config{Level: logger.InfoLevel, Format: "text"}),
 			},
 			expectError: false,
@@ -49,7 +49,7 @@ func TestNew(t *testing.T) {
 		{
 			name: "missing metadata file",
 			config: Config{
-				FileProvider: &session.LocalFileProvider{},
+				FileProvider: storage_manager.NewLocalFileProvider(""),
 				Logger:       logger.NewLogger(logger.Config{Level: logger.InfoLevel, Format: "text"}),
 			},
 			expectError: true,
@@ -66,7 +66,7 @@ func TestNew(t *testing.T) {
 			name: "missing logger",
 			config: Config{
 				MetadataFile: "/tmp/test.json",
-				FileProvider: &session.LocalFileProvider{},
+				FileProvider: storage_manager.NewLocalFileProvider(""),
 			},
 			expectError: true,
 		},
@@ -273,7 +273,7 @@ func TestPersistenceAcrossRestarts(t *testing.T) {
 	tmpDir := t.TempDir()
 	metadataFile := filepath.Join(tmpDir, "sessions_metadata.json")
 
-	fileProvider := session.NewLocalFileProvider(tmpDir)
+	fileProvider := storage_manager.NewLocalFileProvider(tmpDir)
 
 	ctx := context.Background()
 
