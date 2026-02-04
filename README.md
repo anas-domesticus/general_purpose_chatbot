@@ -1,13 +1,13 @@
 # General Purpose Chatbot Framework
 
-A modular, extensible agent framework built in Go for connecting chat platforms to Claude-powered conversational agents.
+A modular, extensible agent framework built in Go for connecting chat platforms to LLM-powered conversational agents.
 
 > **⚠️ Active Development Notice**
 > This project is under rapid active development and is not yet stable. The API, configuration format, and features are subject to change without notice. **Do not rely on this project for production use in its current state.**
 
 ## What It Is
 
-This framework bridges chat platforms (Slack, Telegram) with Claude AI using Google's Agent Development Kit (ADK). Unlike traditional command-based ChatOps tools, it enables natural language conversations with AI agents that can integrate with external tools via MCP (Model Context Protocol) servers.
+This framework bridges chat platforms (Slack, Telegram) with LLMs using Google's Agent Development Kit (ADK). Unlike traditional command-based ChatOps tools, it enables natural language conversations with AI agents that can integrate with external tools via MCP (Model Context Protocol) servers.
 
 ### Architecture
 
@@ -18,7 +18,7 @@ Chat Platform (Slack/Telegram)
         ↓
     Executor (routes messages to agents)
         ↓
-    Agent Factory (creates Claude-powered agents)
+    Agent Factory (creates LLM-powered agents)
         ↓
     MCP Tools (filesystem, database, HTTP, custom)
 ```
@@ -140,7 +140,7 @@ Place this file in the working directory or mount it as a volume in containers.
 
 Configuration is loaded from YAML file first, then environment variables override any matching values. Use environment variables for sensitive values like API keys.
 
-Minimal configuration for Claude:
+Minimal configuration example (using Anthropic):
 
 ```yaml
 llm:
