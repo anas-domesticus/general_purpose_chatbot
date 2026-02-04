@@ -5,10 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/aws/smithy-go"
 	"io"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
@@ -84,10 +84,12 @@ func (c *AWSS3Client) HeadObject(ctx context.Context, bucket, key string) error 
 
 	_, err := c.s3Client.HeadObject(ctx, input)
 	if err != nil {
-		// Check HTTP status code for 404
-		var responseErr *awshttp.ResponseError
-		if errors.As(err, &responseErr) && responseErr.HTTPStatusCode() == 404 {
-			return ErrNotFound
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) {
+			// Check for "NotFound" error code
+			if apiErr.ErrorCode() == "NotFound" {
+				return ErrNotFound
+			}
 		}
 
 		return fmt.Errorf("failed to head object %s in bucket %s: %w", key, bucket, err)
