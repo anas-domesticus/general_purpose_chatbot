@@ -141,11 +141,18 @@ func (p *S3FileProvider) Write(ctx context.Context, path string, data []byte) er
 }
 
 // Exists checks if a file exists in S3.
+// Returns (false, nil) only for "not found" errors.
+// Returns (false, error) for real errors (network, permissions, etc.).
 func (p *S3FileProvider) Exists(ctx context.Context, path string) (bool, error) {
 	key := p.getKey(path)
 	err := p.s3Client.HeadObject(ctx, p.bucket, key)
 	if err != nil {
-		return false, nil
+		// Check if it's a "not found" error - this is expected for empty buckets
+		if err == ErrNotFound {
+			return false, nil
+		}
+		// Real error - propagate it
+		return false, err
 	}
 	return true, nil
 }
