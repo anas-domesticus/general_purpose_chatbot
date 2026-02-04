@@ -170,7 +170,7 @@ func TestGRPCHealthUpdater(t *testing.T) {
 		assert.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, resp1.Status)
 
 		// Make check fail
-		check.err = errors.New("service degraded")
+		check.SetErr(errors.New("service degraded"))
 
 		// Wait for next update
 		time.Sleep(200 * time.Millisecond)
