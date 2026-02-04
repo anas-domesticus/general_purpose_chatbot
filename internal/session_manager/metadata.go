@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
@@ -66,13 +64,7 @@ func (sm *sessionManager) saveMetadata(ctx context.Context) error {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
-	// Ensure directory exists
-	dir := filepath.Dir(sm.config.MetadataFile)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("failed to create metadata directory: %w", err)
-	}
-
-	// Write file
+	// Write file (FileProvider handles directory creation for local storage)
 	if err := sm.config.FileProvider.Write(ctx, sm.config.MetadataFile, data); err != nil {
 		return fmt.Errorf("failed to write metadata file: %w", err)
 	}

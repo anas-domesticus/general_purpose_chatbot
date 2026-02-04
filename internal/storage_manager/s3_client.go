@@ -70,7 +70,11 @@ func (c *AWSS3Client) PutObject(ctx context.Context, bucket, key string, data []
 	return nil
 }
 
+// ErrNotFound is returned when an object does not exist in S3.
+var ErrNotFound = errors.New("object not found")
+
 // HeadObject checks if an object exists in S3.
+// Returns ErrNotFound if the object doesn't exist.
 func (c *AWSS3Client) HeadObject(ctx context.Context, bucket, key string) error {
 	input := &s3.HeadObjectInput{
 		Bucket: aws.String(bucket),
@@ -79,9 +83,18 @@ func (c *AWSS3Client) HeadObject(ctx context.Context, bucket, key string) error 
 
 	_, err := c.s3Client.HeadObject(ctx, input)
 	if err != nil {
+		// Handle "not found" type errors - return sentinel error
 		var notFound *types.NotFound
 		if errors.As(err, &notFound) {
-			return fmt.Errorf("object not found")
+			return ErrNotFound
+		}
+		var noSuchKey *types.NoSuchKey
+		if errors.As(err, &noSuchKey) {
+			return ErrNotFound
+		}
+		var noSuchBucket *types.NoSuchBucket
+		if errors.As(err, &noSuchBucket) {
+			return ErrNotFound
 		}
 		return fmt.Errorf("failed to head object %s in bucket %s: %w", key, bucket, err)
 	}
