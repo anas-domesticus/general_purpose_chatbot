@@ -24,11 +24,7 @@ func (sm *skillsManager) createUpsertTool() (tool.Tool, error) {
 		Name:        "upsert_skill",
 		Description: "Create a new skill or update an existing one. Skills are identified by their name.",
 	}, func(ctx tool.Context, args UpsertSkillArgs) (UpsertSkillResult, error) {
-		skill := Skill{
-			Name:        args.Name,
-			Description: args.Description,
-			Text:        args.Text,
-		}
+		skill := Skill(args)
 
 		if err := sm.UpsertSkill(ctx, skill); err != nil {
 			return UpsertSkillResult{Success: false, Name: args.Name, Message: err.Error()}, err

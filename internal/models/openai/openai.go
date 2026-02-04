@@ -114,10 +114,7 @@ func (o *Model) generateContentNonStreaming(ctx context.Context, req *model.LLMR
 
 	// Transform and add tools if present
 	if req.Tools != nil {
-		tools, err := transformToolsToOpenAI(req.Tools)
-		if err != nil {
-			return nil, fmt.Errorf("failed to transform tools: %w", err)
-		}
+		tools := transformToolsToOpenAI(req.Tools)
 		if len(tools) > 0 {
 			params.Tools = tools
 		}

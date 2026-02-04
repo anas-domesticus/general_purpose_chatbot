@@ -79,9 +79,7 @@ func (e *luaExecutor) execute(ctx context.Context, script string, variables map[
 	registerJSONModule(L)
 
 	// Set input variables as globals
-	if err := setVariables(L, variables); err != nil {
-		return nil, logs, fmt.Errorf("failed to set variables: %w", err)
-	}
+	setVariables(L, variables)
 
 	// Create a context with timeout
 	execCtx, cancel := context.WithTimeout(ctx, timeout)
@@ -243,11 +241,10 @@ func registerJSONModule(ls *lua.LState) {
 }
 
 // setVariables sets Go values as Lua globals
-func setVariables(ls *lua.LState, variables map[string]any) error {
+func setVariables(ls *lua.LState, variables map[string]any) {
 	for name, value := range variables {
 		ls.SetGlobal(name, goValueToLua(ls, value))
 	}
-	return nil
 }
 
 // goValueToLua converts a Go value to a Lua value

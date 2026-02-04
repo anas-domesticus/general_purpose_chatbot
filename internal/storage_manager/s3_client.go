@@ -129,4 +129,3 @@ func (c *AWSS3Client) ListObjects(ctx context.Context, bucket, prefix string) ([
 
 	return keys, nil
 }
-

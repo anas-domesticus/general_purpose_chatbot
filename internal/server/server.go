@@ -70,13 +70,13 @@ func New(ctx context.Context, cfg *appconfig.AppConfig, log logger.Logger) (*Ser
 	}
 
 	// Create session manager (includes ADK session service)
-	s.sessionManager, err = s.createSessionManager(ctx)
+	s.sessionManager, err = s.createSessionManager()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session manager: %w", err)
 	}
 
 	// Create skills manager
-	s.skillsManager, err = s.createSkillsManager(ctx)
+	s.skillsManager, err = s.createSkillsManager()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create skills manager: %w", err)
 	}
@@ -351,7 +351,7 @@ func (s *Server) createStorageManager(ctx context.Context) (*storage_manager.Sto
 }
 
 // createSessionManager creates a session manager using the storage manager
-func (s *Server) createSessionManager(ctx context.Context) (session_manager.Manager, error) {
+func (s *Server) createSessionManager() (session_manager.Manager, error) {
 	// Use storage manager with "sessions" namespace
 	provider := s.storageManager.GetProvider("sessions")
 
@@ -363,7 +363,7 @@ func (s *Server) createSessionManager(ctx context.Context) (session_manager.Mana
 }
 
 // createSkillsManager creates a skills manager using the storage manager
-func (s *Server) createSkillsManager(ctx context.Context) (skills_manager.Manager, error) {
+func (s *Server) createSkillsManager() (skills_manager.Manager, error) {
 	// Use storage manager with "skills" namespace
 	provider := s.storageManager.GetProvider("skills")
 

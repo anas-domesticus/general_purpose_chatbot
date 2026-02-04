@@ -78,14 +78,9 @@ func NewChatAgent(ctx context.Context, llmModel model.LLM, mcpConfig config.MCPC
 	// Create MCP toolsets if MCP is enabled
 	var toolsets []tool.Toolset
 	if mcpConfig.Enabled {
-		mcpToolsets, err := createMCPToolsets(mcpConfig, log)
-		if err != nil {
-			log.Warn("Failed to create MCP toolsets", logger.ErrorField(err))
-			// Continue with basic tools if MCP setup fails
-		} else {
-			log.Info("Successfully created MCP toolsets", logger.IntField("count", len(mcpToolsets)))
-			toolsets = append(toolsets, mcpToolsets...)
-		}
+		mcpToolsets := createMCPToolsets(mcpConfig, log)
+		log.Info("Successfully created MCP toolsets", logger.IntField("count", len(mcpToolsets)))
+		toolsets = append(toolsets, mcpToolsets...)
 	}
 
 	// Return a factory function that creates the agent
@@ -139,7 +134,7 @@ func NewChatAgent(ctx context.Context, llmModel model.LLM, mcpConfig config.MCPC
 }
 
 // createMCPToolsets creates MCP toolsets based on configuration
-func createMCPToolsets(mcpConfig config.MCPConfig, log logger.Logger) ([]tool.Toolset, error) {
+func createMCPToolsets(mcpConfig config.MCPConfig, log logger.Logger) []tool.Toolset {
 	var toolsets []tool.Toolset
 
 	for serverName, serverConfig := range mcpConfig.Servers {
@@ -155,28 +150,20 @@ func createMCPToolsets(mcpConfig config.MCPConfig, log logger.Logger) ([]tool.To
 
 		// Create transport based on transport type
 		var transport mcp.Transport
-		var err error
 
 		switch serverConfig.Transport {
 		case "stdio":
-			transport, err = createStdioTransport(serverConfig)
+			transport = createStdioTransport(serverConfig)
 		case "sse":
-			transport, err = createSSETransport(serverConfig)
+			transport = createSSETransport(serverConfig)
 		case "http":
-			transport, err = createHTTPTransport(serverConfig)
+			transport = createHTTPTransport(serverConfig)
 		case "websocket":
-			transport, err = createWebSocketTransport(serverConfig)
+			transport = createWebSocketTransport(serverConfig)
 		default:
 			log.Warn("Unsupported transport type",
 				logger.StringField("transport", serverConfig.Transport),
 				logger.StringField("server", serverName))
-			continue
-		}
-
-		if err != nil {
-			log.Warn("Failed to create transport",
-				logger.StringField("server", serverName),
-				logger.ErrorField(err))
 			continue
 		}
 
@@ -195,14 +182,14 @@ func createMCPToolsets(mcpConfig config.MCPConfig, log logger.Logger) ([]tool.To
 		log.Info("Successfully created MCP toolset", logger.StringField("server", serverName))
 	}
 
-	return toolsets, nil
+	return toolsets
 }
 
 // createStdioTransport creates stdio transport for MCP servers
-func createStdioTransport(serverConfig config.MCPServerConfig) (mcp.Transport, error) {
+func createStdioTransport(serverConfig config.MCPServerConfig) mcp.Transport {
 	// Build the command
 	args := append([]string{}, serverConfig.Args...)
-	cmd := exec.Command(serverConfig.Command, args...)
+	cmd := exec.Command(serverConfig.Command, args...) //nolint:gosec // Command comes from trusted config
 
 	// Add environment variables if specified
 	if len(serverConfig.Environment) > 0 {
@@ -214,36 +201,34 @@ func createStdioTransport(serverConfig config.MCPServerConfig) (mcp.Transport, e
 	}
 
 	// Create and return CommandTransport
-	transport := &mcp.CommandTransport{
+	return &mcp.CommandTransport{
 		Command: cmd,
 	}
-
-	return transport, nil
 }
 
 // createSSETransport creates SSE transport for MCP servers (2024-11-05 spec)
-func createSSETransport(serverConfig config.MCPServerConfig) (mcp.Transport, error) {
+func createSSETransport(serverConfig config.MCPServerConfig) mcp.Transport {
 	return &mcp.SSEClientTransport{
 		Endpoint:   serverConfig.URL,
 		HTTPClient: createHTTPClient(serverConfig),
-	}, nil
+	}
 }
 
 // createHTTPTransport creates streamable HTTP transport for MCP servers (2025-03-26 spec)
-func createHTTPTransport(serverConfig config.MCPServerConfig) (mcp.Transport, error) {
+func createHTTPTransport(serverConfig config.MCPServerConfig) mcp.Transport {
 	return &mcp.StreamableClientTransport{
 		Endpoint:   serverConfig.URL,
 		HTTPClient: createHTTPClient(serverConfig),
-	}, nil
+	}
 }
 
 // createWebSocketTransport creates WebSocket transport for MCP servers
-func createWebSocketTransport(serverConfig config.MCPServerConfig) (mcp.Transport, error) {
+func createWebSocketTransport(serverConfig config.MCPServerConfig) mcp.Transport {
 	return &webSocketTransport{
 		url:     serverConfig.URL,
 		headers: serverConfig.Headers,
 		auth:    serverConfig.Auth,
-	}, nil
+	}
 }
 
 // createHTTPClient creates an HTTP client with authentication and custom headers
@@ -311,7 +296,10 @@ func (t *webSocketTransport) Connect(ctx context.Context) (mcp.Connection, error
 	}
 
 	dialer := websocket.Dialer{}
-	conn, _, err := dialer.DialContext(ctx, t.url, headers)
+	conn, resp, err := dialer.DialContext(ctx, t.url, headers)
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
 	if err != nil {
 		return nil, fmt.Errorf("websocket dial: %w", err)
 	}

@@ -179,19 +179,16 @@ func TestConvertPartsToUserContent(t *testing.T) {
 		name      string
 		parts     []*genai.Part
 		wantCount int
-		wantErr   bool
 	}{
 		{
 			name:      "nil parts",
 			parts:     nil,
 			wantCount: 0,
-			wantErr:   false,
 		},
 		{
 			name:      "text part",
 			parts:     []*genai.Part{{Text: "Hello world"}},
 			wantCount: 1,
-			wantErr:   false,
 		},
 		{
 			name: "image part",
@@ -204,7 +201,6 @@ func TestConvertPartsToUserContent(t *testing.T) {
 				},
 			},
 			wantCount: 1,
-			wantErr:   false,
 		},
 		{
 			name: "multiple parts",
@@ -218,17 +214,12 @@ func TestConvertPartsToUserContent(t *testing.T) {
 				},
 			},
 			wantCount: 2,
-			wantErr:   false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := convertPartsToUserContent(tt.parts)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("convertPartsToUserContent() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
+			result := convertPartsToUserContent(tt.parts)
 			if len(result) != tt.wantCount {
 				t.Errorf("convertPartsToUserContent() count = %v, want %v", len(result), tt.wantCount)
 			}
@@ -274,19 +265,16 @@ func TestTransformToolsToOpenAI(t *testing.T) {
 		name      string
 		tools     map[string]any
 		wantCount int
-		wantErr   bool
 	}{
 		{
 			name:      "nil tools",
 			tools:     nil,
 			wantCount: 0,
-			wantErr:   false,
 		},
 		{
 			name:      "empty tools",
 			tools:     map[string]any{},
 			wantCount: 0,
-			wantErr:   false,
 		},
 		{
 			name: "single tool",
@@ -309,7 +297,6 @@ func TestTransformToolsToOpenAI(t *testing.T) {
 				},
 			},
 			wantCount: 1,
-			wantErr:   false,
 		},
 		{
 			name: "tool without name is skipped",
@@ -322,7 +309,6 @@ func TestTransformToolsToOpenAI(t *testing.T) {
 				},
 			},
 			wantCount: 0,
-			wantErr:   false,
 		},
 		{
 			name: "multiple tools",
@@ -341,17 +327,12 @@ func TestTransformToolsToOpenAI(t *testing.T) {
 				},
 			},
 			wantCount: 2,
-			wantErr:   false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tools, err := transformToolsToOpenAI(tt.tools)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("transformToolsToOpenAI() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
+			tools := transformToolsToOpenAI(tt.tools)
 			if len(tools) != tt.wantCount {
 				t.Errorf("transformToolsToOpenAI() count = %v, want %v", len(tools), tt.wantCount)
 			}
