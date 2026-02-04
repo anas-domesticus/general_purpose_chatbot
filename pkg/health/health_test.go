@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,8 +13,10 @@ import (
 )
 
 // mockCheck is a simple test implementation of the Check interface.
+// It is thread-safe for concurrent access to the err field.
 type mockCheck struct {
 	name      string
+	mu        sync.RWMutex
 	err       error
 	sleepTime time.Duration
 }
@@ -30,7 +33,16 @@ func (m *mockCheck) Check(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	return m.err
+}
+
+// SetErr sets the error in a thread-safe manner.
+func (m *mockCheck) SetErr(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.err = err
 }
 
 func TestNew(t *testing.T) {
@@ -214,13 +226,13 @@ func TestHealthChecker_FailureThreshold(t *testing.T) {
 		}
 
 		// Success should reset counter
-		check.err = nil
+		check.SetErr(nil)
 		status, err := h.CheckLiveness(context.Background())
 		assert.NoError(t, err)
 		assert.True(t, status.Healthy)
 
 		// Next failure should start counting from 1 again
-		check.err = errors.New("test error")
+		check.SetErr(errors.New("test error"))
 		status, err = h.CheckLiveness(context.Background())
 		assert.NoError(t, err) // Should still be healthy (count = 1)
 		assert.True(t, status.Healthy)
