@@ -1,3 +1,4 @@
+// Package session provides session storage and management.
 package session
 
 import (

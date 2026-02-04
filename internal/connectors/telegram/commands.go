@@ -1,3 +1,4 @@
+// Package telegram provides the Telegram bot connector for the chatbot.
 package telegram
 
 import (
@@ -61,7 +62,7 @@ func (r *CommandRegistry) IsCommand(text string) bool {
 }
 
 // handleNewCommand handles the /new command
-func (c *Connector) handleNewCommand(ctx context.Context, b *bot.Bot, update *models.Update) (string, error) {
+func (c *Connector) handleNewCommand(ctx context.Context, _ *bot.Bot, update *models.Update) (string, error) {
 	userID := fmt.Sprintf("%d", update.Message.From.ID)
 	chatID := fmt.Sprintf("%d", update.Message.Chat.ID)
 

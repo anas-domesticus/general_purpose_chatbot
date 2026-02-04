@@ -1,3 +1,4 @@
+// Package agent_info provides agent information tools.
 package agent_info
 
 import (

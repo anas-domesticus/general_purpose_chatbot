@@ -1,3 +1,4 @@
+// Package persistence provides database persistence and migrations.
 package persistence
 
 import (

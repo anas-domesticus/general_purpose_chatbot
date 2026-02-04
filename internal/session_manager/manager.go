@@ -1,3 +1,4 @@
+// Package session_manager provides session management for chat conversations.
 package session_manager
 
 import (

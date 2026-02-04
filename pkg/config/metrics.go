@@ -8,8 +8,8 @@ import (
 
 // MetricsConfig holds metrics collection and exposure settings
 type MetricsConfig struct {
-	// EnableHttpMetrics enables HTTP request counter and duration metrics
-	EnableHttpMetrics bool `env:"METRICS_ENABLE_HTTP" yaml:"enable_http_metrics" default:"false"`
+	// EnableHTTPMetrics enables HTTP request counter and duration metrics
+	EnableHTTPMetrics bool `env:"METRICS_ENABLE_HTTP" yaml:"enable_http_metrics" default:"false"`
 
 	// EnableJobMetrics enables job processing metrics (total, success, failed, killed)
 	EnableJobMetrics bool `env:"METRICS_ENABLE_JOB" yaml:"enable_job_metrics" default:"false"`

@@ -1,3 +1,4 @@
+// Package checkers provides health check implementations for various backends.
 package checkers
 
 import (

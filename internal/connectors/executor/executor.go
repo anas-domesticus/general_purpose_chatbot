@@ -1,3 +1,4 @@
+// Package executor handles message execution through the AI agent.
 package executor
 
 import (

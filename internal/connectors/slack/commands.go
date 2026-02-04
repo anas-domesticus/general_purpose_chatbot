@@ -1,3 +1,4 @@
+// Package slack provides the Slack connector for the chatbot.
 package slack
 
 import (
@@ -55,7 +56,7 @@ func (c *Connector) handleNewCommand(ctx context.Context, cmd slack.SlashCommand
 }
 
 // handleHelpCommand handles the /help command
-func (c *Connector) handleHelpCommand(ctx context.Context, cmd slack.SlashCommand) (interface{}, error) {
+func (c *Connector) handleHelpCommand(_ context.Context, _ slack.SlashCommand) (interface{}, error) {
 	helpText := `*Available Commands:*
 
 • */new* - Start a new conversation

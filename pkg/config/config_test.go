@@ -9,7 +9,7 @@ import (
 
 type testConfig struct {
 	CommonConfig `yaml:",inline"`
-	Http         HttpServerConfig `yaml:"http,inline"`
+	Http         HTTPServerConfig `yaml:"http,inline"`
 	Database     DatabaseConfig   `yaml:"database,inline"`
 	Metrics      MetricsConfig    `yaml:"metrics,inline"`
 
@@ -46,7 +46,7 @@ func TestGetConfigFromEnvVars(t *testing.T) {
 			},
 			want: testConfig{
 				CommonConfig: CommonConfig{LogLevel: "info"},
-				Http:         HttpServerConfig{Port: 8080, ReadTimeoutSeconds: 15, WriteTimeoutSeconds: 15, IdleTimeoutSeconds: 60, MaxHeaderBytes: 1048576},
+				Http:         HTTPServerConfig{Port: 8080, ReadTimeoutSeconds: 15, WriteTimeoutSeconds: 15, IdleTimeoutSeconds: 60, MaxHeaderBytes: 1048576},
 				Database: DatabaseConfig{
 					URL:              "",
 					Host:             "localhost",
@@ -62,7 +62,7 @@ func TestGetConfigFromEnvVars(t *testing.T) {
 					ConnectTimeout:   "10s",
 					StatementTimeout: "30s",
 				},
-				Metrics: MetricsConfig{Port: 9090, ExposeMetrics: false, EnableHttpMetrics: false, EnableJobMetrics: false},
+				Metrics: MetricsConfig{Port: 9090, ExposeMetrics: false, EnableHTTPMetrics: false, EnableJobMetrics: false},
 				APIKey:  "test-key",
 				Debug:   false,
 			},
@@ -80,7 +80,7 @@ func TestGetConfigFromEnvVars(t *testing.T) {
 			},
 			want: testConfig{
 				CommonConfig: CommonConfig{LogLevel: "debug"},
-				Http:         HttpServerConfig{Port: 3000, ReadTimeoutSeconds: 15, WriteTimeoutSeconds: 15, IdleTimeoutSeconds: 60, MaxHeaderBytes: 1048576},
+				Http:         HTTPServerConfig{Port: 3000, ReadTimeoutSeconds: 15, WriteTimeoutSeconds: 15, IdleTimeoutSeconds: 60, MaxHeaderBytes: 1048576},
 				Database: DatabaseConfig{
 					URL:              "postgres://test:test@testhost:5432/testdb",
 					Host:             "localhost",
@@ -96,7 +96,7 @@ func TestGetConfigFromEnvVars(t *testing.T) {
 					ConnectTimeout:   "10s",
 					StatementTimeout: "30s",
 				},
-				Metrics:  MetricsConfig{Port: 9090, ExposeMetrics: false, EnableHttpMetrics: false, EnableJobMetrics: false},
+				Metrics:  MetricsConfig{Port: 9090, ExposeMetrics: false, EnableHTTPMetrics: false, EnableJobMetrics: false},
 				APIKey:   "env-key",
 				Debug:    true,
 				Features: []string{"feature1", "feature2", "feature3"},
@@ -145,8 +145,8 @@ func TestGetConfigFromEnvVars(t *testing.T) {
 	}
 }
 
-func TestHttpServerConfigHelpers(t *testing.T) {
-	cfg := HttpServerConfig{
+func TestHTTPServerConfigHelpers(t *testing.T) {
+	cfg := HTTPServerConfig{
 		ReadTimeoutSeconds:  30,
 		WriteTimeoutSeconds: 60,
 		IdleTimeoutSeconds:  120,
