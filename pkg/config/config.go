@@ -28,8 +28,8 @@ func processFields(val reflect.Value, typeOfT reflect.Type) (map[string]bool, er
 		field := val.Field(i)
 		fieldType := typeOfT.Field(i)
 
-		// Handle embedded structs (both anonymous and named with inline tag)
-		if field.Kind() == reflect.Struct && (fieldType.Anonymous || strings.Contains(fieldType.Tag.Get("yaml"), "inline")) {
+		// Handle all nested structs recursively
+		if field.Kind() == reflect.Struct {
 			embeddedSetFields, err := processFields(field, fieldType.Type)
 			if err != nil {
 				return nil, err
@@ -38,7 +38,11 @@ func processFields(val reflect.Value, typeOfT reflect.Type) (map[string]bool, er
 			for k, v := range embeddedSetFields {
 				setFields[k] = v
 			}
-		} else {
+			continue
+		}
+
+		// Process regular fields with env tags
+		{
 			tag := fieldType.Tag.Get("env")
 			if tag != "" {
 				envVal := os.Getenv(tag)
@@ -115,12 +119,16 @@ func checkRequiredAndDefaults(val reflect.Value, typeOfT reflect.Type, setFields
 		field := val.Field(i)
 		fieldType := typeOfT.Field(i)
 
-		// Handle embedded structs (both anonymous and named with inline tag)
-		if field.Kind() == reflect.Struct && (fieldType.Anonymous || strings.Contains(fieldType.Tag.Get("yaml"), "inline")) {
+		// Handle all nested structs recursively
+		if field.Kind() == reflect.Struct {
 			if err := checkRequiredAndDefaults(field, fieldType.Type, setFields); err != nil {
 				result = multierror.Append(result, err)
 			}
-		} else {
+			continue
+		}
+
+		// Process regular fields
+		{
 			fieldRequired := false
 			requiredTag := fieldType.Tag.Get("required")
 			if strings.ToLower(requiredTag) == "true" || strings.ToLower(requiredTag) == "1" {

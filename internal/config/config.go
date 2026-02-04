@@ -35,31 +35,31 @@ type AppConfig struct {
 	OpenAI OpenAIConfig `yaml:"openai"`
 
 	// Logging configuration
-	Logging LoggingConfig `yaml:"logging,inline"`
+	Logging LoggingConfig `yaml:"logging"`
 
 	// Monitoring configuration
-	Monitoring MonitoringConfig `yaml:"monitoring,inline"`
+	Monitoring MonitoringConfig `yaml:"monitoring"`
 
 	// Database configuration (optional)
-	Database DatabaseConfig `yaml:"database,inline"`
+	Database DatabaseConfig `yaml:"database"`
 
 	// Security configuration
-	Security SecurityConfig `yaml:"security,inline"`
+	Security SecurityConfig `yaml:"security"`
 
 	// MCP (Model Context Protocol) configuration
-	MCP MCPConfig `yaml:"mcp,inline"`
+	MCP MCPConfig `yaml:"mcp"`
 
 	// Slack configuration
-	Slack SlackConfig `yaml:"slack,inline"`
+	Slack SlackConfig `yaml:"slack"`
 
 	// Telegram configuration
-	Telegram TelegramConfig `yaml:"telegram,inline"`
+	Telegram TelegramConfig `yaml:"telegram"`
 
 	// Storage configuration (persistence layer)
-	Storage StorageConfig `yaml:"storage,inline"`
+	Storage StorageConfig `yaml:"storage"`
 
 	// Health check configuration
-	Health HealthConfig `yaml:"health,inline"`
+	Health HealthConfig `yaml:"health"`
 }
 
 // Validate validates the configuration and returns an error if invalid

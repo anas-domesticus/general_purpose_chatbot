@@ -43,43 +43,6 @@ storage:
   s3_region: us-west-2
   s3_profile: default  # optional AWS profile
 
-# MCP (Model Context Protocol) configuration
-mcp:
-  enabled: true
-  timeout: 30s
-  servers:
-    filesystem:
-      name: filesystem
-      enabled: true
-      transport: stdio
-      command: npx
-      args:
-        - "-y"
-        - "@modelcontextprotocol/server-filesystem"
-        - "/data"
-      environment:
-        PATH: /usr/local/bin:/usr/bin
-      tool_filter:
-        - list_directory
-        - read_file
-        - write_file
-
-    database:
-      name: database
-      enabled: true
-      transport: websocket
-      url: ws://db-server:8080/mcp
-      auth:
-        type: bearer
-        token: your-bearer-token  # set via environment variable for sensitive tokens
-      headers:
-        X-Custom-Header: value
-
-  # MCP server discovery (configured but not yet used)
-  discovery:
-    enabled: true
-    refresh_interval: 5m
-    health_checks: true
 
 # Logging configuration
 logging:
