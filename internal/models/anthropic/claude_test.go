@@ -255,6 +255,18 @@ func TestConvertPartToContentBlock(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "function call part with nil args",
+			part: &genai.Part{
+				FunctionCall: &genai.FunctionCall{
+					ID:   "call_456",
+					Name: "no_args_tool",
+					Args: nil, // nil Args should not cause API errors
+				},
+			},
+			wantNil: false,
+			wantErr: false,
+		},
+		{
 			name: "function response part",
 			part: &genai.Part{
 				FunctionResponse: &genai.FunctionResponse{
