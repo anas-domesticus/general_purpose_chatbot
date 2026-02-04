@@ -8,6 +8,7 @@ import (
 	"io"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
@@ -83,19 +84,12 @@ func (c *AWSS3Client) HeadObject(ctx context.Context, bucket, key string) error 
 
 	_, err := c.s3Client.HeadObject(ctx, input)
 	if err != nil {
-		// Handle "not found" type errors - return sentinel error
-		var notFound *types.NotFound
-		if errors.As(err, &notFound) {
+		// Check HTTP status code for 404
+		var responseErr *awshttp.ResponseError
+		if errors.As(err, &responseErr) && responseErr.HTTPStatusCode() == 404 {
 			return ErrNotFound
 		}
-		var noSuchKey *types.NoSuchKey
-		if errors.As(err, &noSuchKey) {
-			return ErrNotFound
-		}
-		var noSuchBucket *types.NoSuchBucket
-		if errors.As(err, &noSuchBucket) {
-			return ErrNotFound
-		}
+
 		return fmt.Errorf("failed to head object %s in bucket %s: %w", key, bucket, err)
 	}
 
