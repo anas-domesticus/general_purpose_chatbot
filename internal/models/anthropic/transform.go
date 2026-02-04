@@ -168,9 +168,14 @@ func convertPartToContentBlock(part *genai.Part) (anthropic.ContentBlockParamUni
 
 	// Handle function call (tool use)
 	if part.FunctionCall != nil {
+		// Ensure Args is a valid map, not nil - Anthropic API requires a valid dictionary
+		args := part.FunctionCall.Args
+		if args == nil {
+			args = map[string]any{}
+		}
 		return anthropic.NewToolUseBlock(
 			part.FunctionCall.ID,
-			part.FunctionCall.Args,
+			args,
 			part.FunctionCall.Name,
 		), nil
 	}
