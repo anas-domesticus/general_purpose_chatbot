@@ -5,6 +5,7 @@ package storage_manager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -148,7 +149,7 @@ func (p *S3FileProvider) Exists(ctx context.Context, path string) (bool, error) 
 	err := p.s3Client.HeadObject(ctx, p.bucket, key)
 	if err != nil {
 		// Check if it's a "not found" error - this is expected for empty buckets
-		if err == ErrNotFound {
+		if errors.Is(err, ErrNotFound) {
 			return false, nil
 		}
 		// Real error - propagate it
