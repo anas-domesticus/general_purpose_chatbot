@@ -1,13 +1,19 @@
 package agents
 
 import (
+	"context"
+	"encoding/base64"
 	"fmt"
+	"net/http"
 	"os/exec"
+	"sync"
 
+	"github.com/gorilla/websocket"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/config"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/tools/agent_info"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/tools/http_request"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
@@ -157,14 +163,12 @@ func createMCPToolsets(mcpConfig config.MCPConfig, log logger.Logger) ([]tool.To
 		switch serverConfig.Transport {
 		case "stdio":
 			transport, err = createStdioTransport(serverConfig)
-		case "websocket":
-			log.Warn("WebSocket transport not yet implemented",
-				logger.StringField("server", serverName))
-			continue
 		case "sse":
-			log.Warn("SSE transport not yet implemented",
-				logger.StringField("server", serverName))
-			continue
+			transport, err = createSSETransport(serverConfig)
+		case "http":
+			transport, err = createHTTPTransport(serverConfig)
+		case "websocket":
+			transport, err = createWebSocketTransport(serverConfig)
 		default:
 			log.Warn("Unsupported transport type",
 				logger.StringField("transport", serverConfig.Transport),
@@ -218,4 +222,153 @@ func createStdioTransport(serverConfig config.MCPServerConfig) (mcp.Transport, e
 	}
 
 	return transport, nil
+}
+
+// createSSETransport creates SSE transport for MCP servers (2024-11-05 spec)
+func createSSETransport(serverConfig config.MCPServerConfig) (mcp.Transport, error) {
+	return &mcp.SSEClientTransport{
+		Endpoint:   serverConfig.URL,
+		HTTPClient: createHTTPClient(serverConfig),
+	}, nil
+}
+
+// createHTTPTransport creates streamable HTTP transport for MCP servers (2025-03-26 spec)
+func createHTTPTransport(serverConfig config.MCPServerConfig) (mcp.Transport, error) {
+	return &mcp.StreamableClientTransport{
+		Endpoint:   serverConfig.URL,
+		HTTPClient: createHTTPClient(serverConfig),
+	}, nil
+}
+
+// createWebSocketTransport creates WebSocket transport for MCP servers
+func createWebSocketTransport(serverConfig config.MCPServerConfig) (mcp.Transport, error) {
+	return &webSocketTransport{
+		url:     serverConfig.URL,
+		headers: serverConfig.Headers,
+		auth:    serverConfig.Auth,
+	}, nil
+}
+
+// createHTTPClient creates an HTTP client with authentication and custom headers
+func createHTTPClient(serverConfig config.MCPServerConfig) *http.Client {
+	return &http.Client{
+		Transport: &authTransport{
+			base:    http.DefaultTransport,
+			headers: serverConfig.Headers,
+			auth:    serverConfig.Auth,
+		},
+	}
+}
+
+// authTransport adds authentication and custom headers to HTTP requests
+type authTransport struct {
+	base    http.RoundTripper
+	headers map[string]string
+	auth    *config.MCPAuthConfig
+}
+
+func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = req.Clone(req.Context())
+
+	for k, v := range t.headers {
+		req.Header.Set(k, v)
+	}
+
+	if t.auth != nil {
+		switch t.auth.Type {
+		case "bearer":
+			req.Header.Set("Authorization", "Bearer "+t.auth.Token)
+		case "basic":
+			req.SetBasicAuth(t.auth.User, t.auth.Pass)
+		case "api_key":
+			req.Header.Set(t.auth.Header, t.auth.APIKey)
+		}
+	}
+
+	return t.base.RoundTrip(req)
+}
+
+// webSocketTransport implements mcp.Transport for WebSocket connections
+type webSocketTransport struct {
+	url     string
+	headers map[string]string
+	auth    *config.MCPAuthConfig
+}
+
+func (t *webSocketTransport) Connect(ctx context.Context) (mcp.Connection, error) {
+	// Build headers with auth
+	headers := http.Header{}
+	for k, v := range t.headers {
+		headers.Set(k, v)
+	}
+	if t.auth != nil {
+		switch t.auth.Type {
+		case "bearer":
+			headers.Set("Authorization", "Bearer "+t.auth.Token)
+		case "basic":
+			headers.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString(
+				[]byte(t.auth.User+":"+t.auth.Pass)))
+		case "api_key":
+			headers.Set(t.auth.Header, t.auth.APIKey)
+		}
+	}
+
+	dialer := websocket.Dialer{}
+	conn, _, err := dialer.DialContext(ctx, t.url, headers)
+	if err != nil {
+		return nil, fmt.Errorf("websocket dial: %w", err)
+	}
+
+	return &wsConnection{conn: conn, done: make(chan struct{})}, nil
+}
+
+// wsConnection implements mcp.Connection for WebSocket
+type wsConnection struct {
+	conn *websocket.Conn
+	mu   sync.Mutex
+	done chan struct{}
+}
+
+func (c *wsConnection) Read(ctx context.Context) (jsonrpc.Message, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-c.done:
+		return nil, fmt.Errorf("connection closed")
+	default:
+	}
+
+	_, data, err := c.conn.ReadMessage()
+	if err != nil {
+		return nil, err
+	}
+	return jsonrpc.DecodeMessage(data)
+}
+
+func (c *wsConnection) Write(ctx context.Context, msg jsonrpc.Message) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.done:
+		return fmt.Errorf("connection closed")
+	default:
+	}
+
+	data, err := jsonrpc.EncodeMessage(msg)
+	if err != nil {
+		return err
+	}
+	return c.conn.WriteMessage(websocket.TextMessage, data)
+}
+
+func (c *wsConnection) Close() error {
+	close(c.done)
+	return c.conn.Close()
+}
+
+func (c *wsConnection) SessionID() string {
+	return ""
 }
