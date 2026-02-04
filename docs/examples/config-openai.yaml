@@ -15,28 +15,27 @@ llm:
   provider: openai  # claude, gemini, or openai
 
 # OpenAI configuration
+# Note: api_key should be set via OPENAI_API_KEY environment variable
 openai:
-  api_key: ${OPENAI_API_KEY}
   model: gpt-4
   api_base_url: https://api.openai.com/v1
   max_retries: 3
   timeout: 30s
 
 # Slack configuration
+# Note: tokens should be set via SLACK_BOT_TOKEN and SLACK_APP_TOKEN environment variables
 slack:
-  bot_token: ${SLACK_BOT_TOKEN}
-  app_token: ${SLACK_APP_TOKEN}
   debug: false
 
 # Telegram configuration
+# Note: bot_token should be set via TELEGRAM_BOT_TOKEN environment variable
 telegram:
-  bot_token: ${TELEGRAM_BOT_TOKEN}
   debug: false
 
 # Session storage
-session:
-  backend: memory  # local, s3, or memory
-  local_dir: ./sessions
+storage:
+  backend: local  # local or s3
+  local_dir: ./data
 
 # MCP (Model Context Protocol) configuration
 mcp:
@@ -61,8 +60,6 @@ logging:
 # Monitoring configuration
 monitoring:
   health_check_timeout: 10s
-  metrics_enabled: true
-  metrics_port: 9090
 
 # Security configuration
 security:
