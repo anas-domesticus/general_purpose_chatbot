@@ -8,51 +8,22 @@ run:
   modules-download-mode: readonly
 
 issues:
-  exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
   new: false
-
-linters-settings:
-  govet:
-    check-shadowing: true
-  gocyclo:
-    min-complexity: 15
-  gofmt:
-    simplify: true
-  goimports:
-    local-prefixes: github.com/lewisedginton/general-purpose-chatbot
-  goconst:
-    min-len: 3
-    min-occurrences: 3
-  misspell:
-    locale: UK
-  lll:
-    line-length: 120
-  gofumpt:
-    extra-rules: true
-  depguard:
-    rules:
-      main:
-        deny:
-          - pkg: "io/ioutil"
-            desc: "Use os or io package instead"
-  revive:
-    severity: warning
-    rules:
-      - name: exported
-      - name: package-comments
-      - name: var-naming
-      - name: function-result-limit
-        arguments: [3]
-      - name: cognitive-complexity
-        arguments: [20]
 
 formatters:
   enable:
     - gofmt
     - gofumpt
     - goimports
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes: github.com/lewisedginton/general-purpose-chatbot
+    gofumpt:
+      extra-rules: true
 
 linters:
   enable:
@@ -81,7 +52,7 @@ linters:
     - contextcheck
     - bodyclose
     - noctx
-    
+
   disable:
     # Disable noisy linters for now
     - exhaustive
@@ -92,6 +63,35 @@ linters:
     - nlreturn
     - varnamelen
     - tagliatelle
+
+  settings:
+    govet:
+      check-shadowing: true
+    gocyclo:
+      min-complexity: 15
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    misspell:
+      locale: UK
+    lll:
+      line-length: 120
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: "io/ioutil"
+              desc: "Use os or io package instead"
+    revive:
+      severity: warning
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: var-naming
+        - name: function-result-limit
+          arguments: [3]
+        - name: cognitive-complexity
+          arguments: [20]
 
   # Don't enable these by default but consider for strict mode:
   # - dupl
