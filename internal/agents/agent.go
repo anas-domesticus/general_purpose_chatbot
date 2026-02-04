@@ -21,6 +21,12 @@ import (
 	"google.golang.org/adk/tool/mcptoolset"
 )
 
+// PromptProvider defines the interface for retrieving prompts.
+type PromptProvider interface {
+	// GetSystemPrompt retrieves the system prompt.
+	GetSystemPrompt(ctx context.Context) (string, error)
+}
+
 // PlatformSpecificGuidanceProvider defines an interface for platform-specific guidance
 type PlatformSpecificGuidanceProvider interface {
 	PlatformName() string    // Name of the platform (e.g., "Slack", "Telegram")
@@ -34,25 +40,40 @@ type UserInfoProvider interface {
 
 // AgentConfig holds configuration for creating a chat agent
 type AgentConfig struct {
-	Name        string        // Agent name (e.g., "slack_assistant", "telegram_assistant")
-	Platform    string        // Platform name for description (e.g., "Slack", "Telegram")
-	Description string        // Agent description
-	Logger      logger.Logger // Structured logger instance
+	Name           string         // Agent name (e.g., "slack_assistant", "telegram_assistant")
+	Platform       string         // Platform name for description (e.g., "Slack", "Telegram")
+	Description    string         // Agent description
+	Logger         logger.Logger  // Structured logger instance
+	PromptProvider PromptProvider // Provider for system prompts
 }
 
 // UserInfoFunc is a function that returns user information
 type UserInfoFunc func() string
 
 // NewChatAgent creates a factory function that returns a new chat agent with Claude model and MCP configuration
-func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig AgentConfig, tools []tool.Tool) (func(PlatformSpecificGuidanceProvider, UserInfoFunc) (agent.Agent, error), error) {
+func NewChatAgent(ctx context.Context, llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig AgentConfig, tools []tool.Tool) (func(PlatformSpecificGuidanceProvider, UserInfoFunc) (agent.Agent, error), error) {
 	if agentConfig.Logger == nil {
 		return nil, fmt.Errorf("logger is required in AgentConfig")
 	}
 
 	log := agentConfig.Logger.WithFields(logger.StringField("component", "agent"))
 
-	// Load agent instructions from system.md in current directory
-	instructions := loadInstructionFile("system.md", log)
+	// Load agent instructions from prompt provider
+	var instructions string
+	if agentConfig.PromptProvider != nil {
+		var err error
+		instructions, err = agentConfig.PromptProvider.GetSystemPrompt(ctx)
+		if err != nil {
+			log.Warn("Failed to load system prompt from provider, using default",
+				logger.ErrorField(err))
+			instructions = getDefaultInstructions()
+		} else {
+			log.Info("Loaded system prompt from provider")
+		}
+	} else {
+		log.Warn("No prompt provider configured, using default instructions")
+		instructions = getDefaultInstructions()
+	}
 
 	// Create MCP toolsets if MCP is enabled
 	var toolsets []tool.Toolset

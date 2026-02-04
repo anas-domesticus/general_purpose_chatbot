@@ -118,3 +118,16 @@ func TestPromptManager_GetDocument(t *testing.T) {
 		assert.Empty(t, result)
 	})
 }
+
+func TestPromptManager_Tools(t *testing.T) {
+	t.Run("returns get_document tool", func(t *testing.T) {
+		mockProvider := mocks.NewFileProvider(t)
+		manager := New(mockProvider)
+
+		tools, err := manager.Tools()
+
+		assert.NoError(t, err)
+		assert.Len(t, tools, 1)
+		assert.Equal(t, "get_document", tools[0].Name())
+	})
+}

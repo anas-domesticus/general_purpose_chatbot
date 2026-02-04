@@ -23,6 +23,7 @@ import (
 	"github.com/lewisedginton/general_purpose_chatbot/internal/models/anthropic"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/models/openai"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/monitoring"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/prompt_manager"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/session_manager"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/skills_manager"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/storage_manager"
@@ -50,6 +51,7 @@ type Server struct {
 	storageManager    *storage_manager.StorageManager
 	sessionManager    session_manager.Manager
 	skillsManager     skills_manager.Manager
+	promptManager     *prompt_manager.PromptManager
 	cancel            context.CancelFunc
 }
 
@@ -79,6 +81,10 @@ func New(ctx context.Context, cfg *appconfig.AppConfig, log logger.Logger) (*Ser
 		return nil, fmt.Errorf("failed to create skills manager: %w", err)
 	}
 
+	// Create prompt manager using local filesystem (prompts are part of deployment, not user data)
+	promptProvider := storage_manager.NewLocalFileProvider("prompts")
+	s.promptManager = prompt_manager.New(promptProvider)
+
 	// Create LLM model instance based on configured provider
 	llmModel, err := s.createLLMModel(ctx)
 	if err != nil {
@@ -92,11 +98,12 @@ func New(ctx context.Context, cfg *appconfig.AppConfig, log logger.Logger) (*Ser
 	}
 
 	// Create generic chat agent factory (shared across all platforms)
-	chatAgentFactory, err := agents.NewChatAgent(llmModel, cfg.MCP, agents.AgentConfig{
-		Name:        "chat_assistant",
-		Platform:    "Multi-Platform",
-		Description: "Claude-powered assistant with MCP capabilities",
-		Logger:      log,
+	chatAgentFactory, err := agents.NewChatAgent(ctx, llmModel, cfg.MCP, agents.AgentConfig{
+		Name:           "chat_assistant",
+		Platform:       "Multi-Platform",
+		Description:    "AI assistant with MCP capabilities",
+		Logger:         log,
+		PromptProvider: s.promptManager,
 	}, tools)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create chat agent factory: %w", err)
@@ -395,6 +402,13 @@ func (s *Server) createTools(llmModel model.LLM) ([]tool.Tool, error) {
 		return nil, fmt.Errorf("failed to create skills tools: %w", err)
 	}
 	tools = append(tools, skillsTools...)
+
+	// Add prompt manager tools
+	promptTools, err := s.promptManager.Tools()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create prompt tools: %w", err)
+	}
+	tools = append(tools, promptTools...)
 
 	return tools, nil
 }
