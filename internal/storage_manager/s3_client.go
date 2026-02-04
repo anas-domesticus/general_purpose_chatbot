@@ -105,6 +105,7 @@ func (c *AWSS3Client) DeleteObject(ctx context.Context, bucket, key string) erro
 }
 
 // ListObjects lists objects with a given prefix in S3.
+// Returns an empty list if the bucket/prefix doesn't exist or has no matching objects.
 func (c *AWSS3Client) ListObjects(ctx context.Context, bucket, prefix string) ([]string, error) {
 	input := &s3.ListObjectsV2Input{
 		Bucket: aws.String(bucket),
@@ -117,6 +118,17 @@ func (c *AWSS3Client) ListObjects(ctx context.Context, bucket, prefix string) ([
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
+			// Handle "not found" type errors gracefully - return empty list
+			// This allows the application to start even if the bucket/prefix
+			// hasn't been initialized yet (e.g., no skills have been created)
+			var noSuchBucket *types.NoSuchBucket
+			if errors.As(err, &noSuchBucket) {
+				return []string{}, nil
+			}
+			var notFound *types.NotFound
+			if errors.As(err, &notFound) {
+				return []string{}, nil
+			}
 			return nil, fmt.Errorf("failed to list objects with prefix %s in bucket %s: %w", prefix, bucket, err)
 		}
 
