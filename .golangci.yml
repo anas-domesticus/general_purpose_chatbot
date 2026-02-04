@@ -1,62 +1,28 @@
 # golangci-lint configuration for General Purpose Chatbot Framework
+# Based on official v2 schema: https://golangci-lint.run/docs/configuration/file/
 version: "2"
 
 run:
   timeout: 5m
-  issues-exit-code: 1
   tests: true
-  modules-download-mode: readonly
 
 issues:
-  exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
-  new: false
-
-linters-settings:
-  govet:
-    check-shadowing: true
-  gocyclo:
-    min-complexity: 15
-  gofmt:
-    simplify: true
-  goimports:
-    local-prefixes: github.com/lewisedginton/general-purpose-chatbot
-  goconst:
-    min-len: 3
-    min-occurrences: 3
-  misspell:
-    locale: UK
-  lll:
-    line-length: 120
-  gofumpt:
-    extra-rules: true
-  depguard:
-    rules:
-      main:
-        deny:
-          - pkg: "io/ioutil"
-            desc: "Use os or io package instead"
-  revive:
-    severity: warning
-    rules:
-      - name: exported
-      - name: package-comments
-      - name: var-naming
-      - name: function-result-limit
-        arguments: [3]
-      - name: cognitive-complexity
-        arguments: [20]
 
 formatters:
   enable:
     - gofmt
     - gofumpt
     - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/lewisedginton/general-purpose-chatbot
 
 linters:
   enable:
-    # Base linters (gosimple merged into staticcheck as of v2)
+    # Base linters
     - errcheck
     - govet
     - ineffassign
@@ -81,9 +47,8 @@ linters:
     - contextcheck
     - bodyclose
     - noctx
-    
+
   disable:
-    # Disable noisy linters for now
     - exhaustive
     - exhaustruct
     - funlen
@@ -93,7 +58,29 @@ linters:
     - varnamelen
     - tagliatelle
 
-  # Don't enable these by default but consider for strict mode:
-  # - dupl
-  # - goconst
-  # - gomnd
+  settings:
+    gocyclo:
+      min-complexity: 15
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    misspell:
+      locale: UK
+    lll:
+      line-length: 120
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: "io/ioutil"
+              desc: "Use os or io package instead"
+    revive:
+      severity: warning
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: var-naming
+        - name: function-result-limit
+          arguments: [3]
+        - name: cognitive-complexity
+          arguments: [20]
