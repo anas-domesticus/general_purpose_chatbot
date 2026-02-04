@@ -52,7 +52,7 @@ func NewConnector(config Config, exec *executor.Executor, sessionMgr session_man
 		return nil, fmt.Errorf("logger is required")
 	}
 
-	// Initialize Slack clients
+	// Initialise Slack clients
 	client := slack.New(
 		config.BotToken,
 		slack.OptionAppLevelToken(config.AppToken),
@@ -141,8 +141,7 @@ func (c *Connector) Start(ctx context.Context) error {
 
 // handleEvent processes Slack events and routes them to the agent
 func (c *Connector) handleEvent(ctx context.Context, event slackevents.EventsAPIEvent) error {
-	switch event.Type {
-	case slackevents.CallbackEvent:
+	if event.Type == slackevents.CallbackEvent {
 		innerEvent := event.InnerEvent
 		switch ev := innerEvent.Data.(type) {
 		case *slackevents.MessageEvent:
@@ -218,7 +217,6 @@ func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.M
 	}, c, func() string {
 		return c.GetUserInfo(ctx, event.User)
 	})
-
 	if err != nil {
 		c.logger.Error("Error from executor", logger.ErrorField(err))
 		_, _, err = c.client.PostMessage(event.Channel,
@@ -263,7 +261,6 @@ func (c *Connector) handleAppMentionEvent(ctx context.Context, event *slackevent
 	}, c, func() string {
 		return c.GetUserInfo(ctx, event.User)
 	})
-
 	if err != nil {
 		c.logger.Error("Error from executor", logger.ErrorField(err))
 		// Send error message to channel

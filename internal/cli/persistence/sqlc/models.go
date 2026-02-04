@@ -5,6 +5,7 @@ package sqlc
 import (
 	"database/sql/driver"
 	"fmt"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
 

@@ -1,8 +1,9 @@
 package httpmiddleware
 
 import (
-	"github.com/google/uuid"
 	"net/http"
+
+	"github.com/google/uuid"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
 

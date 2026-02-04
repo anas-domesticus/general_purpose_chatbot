@@ -88,20 +88,20 @@ func TestMCPConfigValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			appConfig := &AppConfig{
-				MCP:                tt.config,
-				Port:               8080,
-				RequestTimeout:     30 * time.Second,
-				IdleTimeout:        60 * time.Second,
-				LLM:                LLMConfig{Provider: "claude"},
-				Anthropic:          AnthropicConfig{
+				MCP:            tt.config,
+				Port:           8080,
+				RequestTimeout: 30 * time.Second,
+				IdleTimeout:    60 * time.Second,
+				LLM:            LLMConfig{Provider: "claude"},
+				Anthropic: AnthropicConfig{
 					APIKey:         "test-api-key",
 					Timeout:        30 * time.Second,
 					InitialBackoff: 1 * time.Second,
 					MaxBackoff:     10 * time.Second,
 				},
-				Security:           SecurityConfig{MaxRequestSize: 1024, RateLimitRPS: 1},
-				Logging:            LoggingConfig{Level: "info", Format: "json"},
-				Monitoring:         MonitoringConfig{},
+				Security:   SecurityConfig{MaxRequestSize: 1024, RateLimitRPS: 1},
+				Logging:    LoggingConfig{Level: "info", Format: "json"},
+				Monitoring: MonitoringConfig{},
 			}
 
 			err := appConfig.Validate()
@@ -262,15 +262,15 @@ func TestMCPAuthValidation(t *testing.T) {
 				RequestTimeout: 30 * time.Second,
 				IdleTimeout:    60 * time.Second,
 				LLM:            LLMConfig{Provider: "claude"},
-				Anthropic:      AnthropicConfig{
+				Anthropic: AnthropicConfig{
 					APIKey:         "test-api-key",
 					Timeout:        30 * time.Second,
 					InitialBackoff: 1 * time.Second,
 					MaxBackoff:     10 * time.Second,
 				},
-				Security:       SecurityConfig{MaxRequestSize: 1024, RateLimitRPS: 1},
-				Logging:        LoggingConfig{Level: "info", Format: "json"},
-				Monitoring:     MonitoringConfig{},
+				Security:   SecurityConfig{MaxRequestSize: 1024, RateLimitRPS: 1},
+				Logging:    LoggingConfig{Level: "info", Format: "json"},
+				Monitoring: MonitoringConfig{},
 			}
 
 			err := appConfig.Validate()

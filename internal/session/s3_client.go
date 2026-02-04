@@ -36,7 +36,7 @@ func (c *AWSS3Client) GetObject(ctx context.Context, bucket, key string) ([]byte
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object %s from bucket %s: %w", key, bucket, err)
 	}
-	defer result.Body.Close()
+	defer func() { _ = result.Body.Close() }()
 
 	data, err := io.ReadAll(result.Body)
 	if err != nil {

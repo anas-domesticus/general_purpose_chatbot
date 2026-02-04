@@ -7,7 +7,8 @@ import (
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
 
-// HealthResponse represents the JSON response for health check endpoints.
+// HealthResponse represents the JSON response structure for HTTP health check endpoints.
+// It includes the overall status and detailed information about individual checks.
 type HealthResponse struct {
 	Status  string                 `json:"status"`            // "healthy" | "unhealthy"
 	Checks  map[string]CheckStatus `json:"checks,omitempty"`  // check name -> status

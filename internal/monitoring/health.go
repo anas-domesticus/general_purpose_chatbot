@@ -11,6 +11,14 @@ import (
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
 
+// Health status constants
+const (
+	statusHealthy   = "healthy"
+	statusUnhealthy = "unhealthy"
+	statusReady     = "ready"
+	statusNotReady  = "not_ready"
+)
+
 // HealthMonitor manages health checks and monitoring endpoints for the application
 type HealthMonitor struct {
 	checker   *health.HealthChecker
@@ -107,7 +115,7 @@ func (hm *HealthMonitor) LivenessHandler() http.HandlerFunc {
 		status, err := hm.checker.CheckLiveness(ctx)
 
 		response := map[string]interface{}{
-			"status":    "healthy",
+			"status":    statusHealthy,
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
 			"uptime":    time.Since(hm.startTime).String(),
 			"checks":    status.Checks,
@@ -116,7 +124,7 @@ func (hm *HealthMonitor) LivenessHandler() http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 
 		if err != nil {
-			response["status"] = "unhealthy"
+			response["status"] = statusUnhealthy
 			response["error"] = err.Error()
 			w.WriteHeader(http.StatusServiceUnavailable)
 			hm.logger.Error("Liveness check failed", logger.ErrorField(err))
@@ -124,7 +132,7 @@ func (hm *HealthMonitor) LivenessHandler() http.HandlerFunc {
 			w.WriteHeader(http.StatusOK)
 		}
 
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}
 }
 
@@ -137,7 +145,7 @@ func (hm *HealthMonitor) ReadinessHandler() http.HandlerFunc {
 		status, err := hm.checker.CheckReadiness(ctx)
 
 		response := map[string]interface{}{
-			"status":    "ready",
+			"status":    statusReady,
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
 			"checks":    status.Checks,
 		}
@@ -145,7 +153,7 @@ func (hm *HealthMonitor) ReadinessHandler() http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 
 		if err != nil {
-			response["status"] = "not_ready"
+			response["status"] = statusNotReady
 			response["error"] = err.Error()
 			w.WriteHeader(http.StatusServiceUnavailable)
 			hm.logger.Error("Readiness check failed", logger.ErrorField(err))
@@ -153,7 +161,7 @@ func (hm *HealthMonitor) ReadinessHandler() http.HandlerFunc {
 			w.WriteHeader(http.StatusOK)
 		}
 
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}
 }
 
@@ -167,16 +175,16 @@ func (hm *HealthMonitor) HealthHandler() http.HandlerFunc {
 		readinessStatus, readinessErr := hm.checker.CheckReadiness(ctx)
 
 		response := map[string]interface{}{
-			"status":    "healthy",
+			"status":    statusHealthy,
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
 			"uptime":    time.Since(hm.startTime).String(),
 			"version":   getVersion(),
 			"liveness": map[string]interface{}{
-				"status": "healthy",
+				"status": statusHealthy,
 				"checks": livenessStatus.Checks,
 			},
 			"readiness": map[string]interface{}{
-				"status": "ready",
+				"status": statusReady,
 				"checks": readinessStatus.Checks,
 			},
 		}
@@ -187,25 +195,25 @@ func (hm *HealthMonitor) HealthHandler() http.HandlerFunc {
 		overallHealthy := true
 
 		if livenessErr != nil {
-			response["liveness"].(map[string]interface{})["status"] = "unhealthy"
+			response["liveness"].(map[string]interface{})["status"] = statusUnhealthy
 			response["liveness"].(map[string]interface{})["error"] = livenessErr.Error()
 			overallHealthy = false
 		}
 
 		if readinessErr != nil {
-			response["readiness"].(map[string]interface{})["status"] = "not_ready"
+			response["readiness"].(map[string]interface{})["status"] = statusNotReady
 			response["readiness"].(map[string]interface{})["error"] = readinessErr.Error()
 			overallHealthy = false
 		}
 
 		if !overallHealthy {
-			response["status"] = "unhealthy"
+			response["status"] = statusUnhealthy
 			w.WriteHeader(http.StatusServiceUnavailable)
 		} else {
 			w.WriteHeader(http.StatusOK)
 		}
 
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}
 }
 

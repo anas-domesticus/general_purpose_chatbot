@@ -2,8 +2,9 @@ package utils
 
 import (
 	"fmt"
-	"google.golang.org/grpc"
 	"net"
+
+	"google.golang.org/grpc"
 
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )

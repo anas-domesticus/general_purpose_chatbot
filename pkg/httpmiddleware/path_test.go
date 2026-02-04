@@ -8,7 +8,7 @@ import (
 
 func TestStripPrefix(t *testing.T) {
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(r.URL.Path))
+		_, _ = w.Write([]byte(r.URL.Path))
 	})
 
 	t.Run("strips matching prefix", func(t *testing.T) {

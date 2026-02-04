@@ -9,6 +9,13 @@ import (
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
 
+// LLM provider constants
+const (
+	ProviderClaude = "claude"
+	ProviderGemini = "gemini"
+	ProviderOpenAI = "openai"
+)
+
 // AppConfig holds all application configuration
 type AppConfig struct {
 	// Service configuration
@@ -213,22 +220,22 @@ func (c *AppConfig) Validate() error {
 
 	// Validate LLM provider
 	provider := strings.ToLower(c.LLM.Provider)
-	if provider != "claude" && provider != "gemini" && provider != "openai" {
+	if provider != ProviderClaude && provider != ProviderGemini && provider != ProviderOpenAI {
 		result = multierror.Append(result, fmt.Errorf("llm_provider must be 'claude', 'gemini', or 'openai', got %q", c.LLM.Provider))
 	}
 
 	// Validate provider-specific configuration
-	if provider == "claude" {
+	if provider == ProviderClaude {
 		if c.Anthropic.APIKey == "" {
 			result = multierror.Append(result, fmt.Errorf("anthropic_api_key is required when using claude provider"))
 		}
 	}
-	if provider == "gemini" {
+	if provider == ProviderGemini {
 		if c.Gemini.APIKey == "" {
 			result = multierror.Append(result, fmt.Errorf("gemini_api_key is required when using gemini provider"))
 		}
 	}
-	if provider == "openai" {
+	if provider == ProviderOpenAI {
 		if c.OpenAI.APIKey == "" {
 			result = multierror.Append(result, fmt.Errorf("openai_api_key is required when using openai provider"))
 		}
@@ -319,7 +326,9 @@ func (c *AppConfig) Validate() error {
 				}
 			}
 			if !validTransport {
-				result = multierror.Append(result, fmt.Errorf("MCP server '%s': transport must be one of [stdio, websocket, sse], got %q", serverName, serverConfig.Transport))
+				result = multierror.Append(result, fmt.Errorf(
+					"MCP server '%s': transport must be one of [stdio, websocket, sse], got %q",
+					serverName, serverConfig.Transport))
 			}
 
 			// Validate stdio configuration
@@ -347,7 +356,9 @@ func (c *AppConfig) Validate() error {
 					}
 				}
 				if !validAuth {
-					result = multierror.Append(result, fmt.Errorf("MCP server '%s': auth type must be one of [bearer, basic, api_key], got %q", serverName, serverConfig.Auth.Type))
+					result = multierror.Append(result, fmt.Errorf(
+						"MCP server '%s': auth type must be one of [bearer, basic, api_key], got %q",
+						serverName, serverConfig.Auth.Type))
 				}
 
 				// Validate auth fields based on type

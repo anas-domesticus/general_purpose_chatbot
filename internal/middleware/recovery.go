@@ -60,10 +60,10 @@ func handlePanic(w http.ResponseWriter, r *http.Request, err interface{}, config
 
 	// Write error response
 	w.WriteHeader(http.StatusInternalServerError)
-	
+
 	// Write response body
 	if config.ResponseMessage != "" {
-		w.Write([]byte(config.ResponseMessage))
+		_, _ = w.Write([]byte(config.ResponseMessage))
 	}
 }
 
@@ -71,7 +71,7 @@ func handlePanic(w http.ResponseWriter, r *http.Request, err interface{}, config
 func logPanic(r *http.Request, panicErr interface{}, stackTrace string, log logger.Logger) {
 	if log == nil {
 		// Fallback to basic logging if no logger provided
-		fmt.Printf("PANIC: %v\nRequest: %s %s\nStack:\n%s\n", 
+		fmt.Printf("PANIC: %v\nRequest: %s %s\nStack:\n%s\n",
 			panicErr, r.Method, r.URL.Path, stackTrace)
 		return
 	}
@@ -221,7 +221,7 @@ func RequestLogging(log logger.Logger) func(http.Handler) http.Handler {
 
 			// Log request completion
 			duration := time.Since(start)
-			
+
 			fields := []logger.LogField{
 				logger.HTTPMethodField(r.Method),
 				logger.HTTPPathField(r.URL.Path),
@@ -243,8 +243,8 @@ func RequestLogging(log logger.Logger) func(http.Handler) http.Handler {
 // loggingResponseWriter wraps http.ResponseWriter for logging
 type loggingResponseWriter struct {
 	http.ResponseWriter
-	statusCode    int
-	bytesWritten  int
+	statusCode   int
+	bytesWritten int
 }
 
 func (w *loggingResponseWriter) WriteHeader(statusCode int) {

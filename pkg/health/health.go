@@ -51,13 +51,15 @@ type CheckResult struct {
 	Latency time.Duration
 }
 
-// HealthStatus represents the overall health status.
+// HealthStatus represents the overall health status of the service,
+// aggregating the results of all executed health checks.
 type HealthStatus struct {
 	Healthy bool
 	Checks  []CheckResult
 }
 
 // HealthChecker manages and executes health checks for liveness and readiness probes.
+// It supports concurrent check execution, failure thresholds, and configurable timeouts.
 type HealthChecker struct {
 	livenessChecks   []Check
 	readinessChecks  []Check

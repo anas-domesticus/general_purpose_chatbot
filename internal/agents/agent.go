@@ -127,7 +127,6 @@ func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig Ag
 			Tools:       tools,
 			Toolsets:    toolsets,
 		})
-
 		if err != nil {
 			return nil, err
 		}

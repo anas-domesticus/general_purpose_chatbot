@@ -6,9 +6,11 @@ run:
   timeout: 5m
   tests: true
 
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0
+output:
+  formats:
+    text:
+      print-linter-name: true
+      print-issued-lines: true
 
 formatters:
   enable:
@@ -58,6 +60,11 @@ linters:
     - varnamelen
     - tagliatelle
 
+  exclusions:
+    # Exclude sqlc-generated files
+    paths:
+      - "internal/cli/persistence/sqlc"
+
   settings:
     gocyclo:
       min-complexity: 15
@@ -67,7 +74,7 @@ linters:
     misspell:
       locale: UK
     lll:
-      line-length: 120
+      line-length: 150
     depguard:
       rules:
         main:
@@ -78,6 +85,8 @@ linters:
       severity: warning
       rules:
         - name: exported
+          arguments:
+            - disableStutteringCheck  # Allow types like health.HealthChecker
         - name: package-comments
         - name: var-naming
         - name: function-result-limit

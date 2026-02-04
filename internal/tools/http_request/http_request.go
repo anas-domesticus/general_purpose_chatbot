@@ -60,7 +60,7 @@ func handler(ctx tool.Context, args Args) (Result, error) {
 			Error: "Request failed: " + err.Error(),
 		}, nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read response body
 	respBody, err := io.ReadAll(resp.Body)

@@ -4,9 +4,13 @@ package logger
 type Level int
 
 const (
+	// DebugLevel represents the debug log level for detailed diagnostic information.
 	DebugLevel Level = iota
+	// InfoLevel represents the info log level for general informational messages.
 	InfoLevel
+	// WarnLevel represents the warn log level for warning messages.
 	WarnLevel
+	// ErrorLevel represents the error log level for error messages.
 	ErrorLevel
 )
 

@@ -280,7 +280,7 @@ func TestExecutor_NoOSExecute(t *testing.T) {
 func TestExecutor_NoResult(t *testing.T) {
 	executor := newExecutor(DefaultConfig())
 
-	script := `local x = 1 + 2`  // no result set
+	script := `local x = 1 + 2` // no result set
 
 	output, _, err := executor.execute(context.Background(), script, nil, 5*time.Second)
 	require.NoError(t, err)
@@ -410,13 +410,13 @@ func TestGoValueToLua_AllTypes(t *testing.T) {
 	executor := newExecutor(DefaultConfig())
 
 	variables := map[string]any{
-		"str":     "hello",
-		"num":     float64(42),
-		"numInt":  123,
+		"str":      "hello",
+		"num":      float64(42),
+		"numInt":   123,
 		"numInt64": int64(456),
-		"boolean": true,
-		"null":    nil,
-		"arr":     []any{float64(1), float64(2), float64(3)},
+		"boolean":  true,
+		"null":     nil,
+		"arr":      []any{float64(1), float64(2), float64(3)},
 		"obj": map[string]any{
 			"nested": "value",
 		},

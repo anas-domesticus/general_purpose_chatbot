@@ -7,18 +7,19 @@ import (
 	"os"
 	"time"
 
+	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
 
 const (
 	subsystem = "app"
 )
 
+// Metrics provides Prometheus metrics collection for HTTP and gRPC requests.
 type Metrics struct {
 	reg *prometheus.Registry
 
@@ -39,6 +40,7 @@ type Metrics struct {
 	log      logger.Logger
 }
 
+// NewMetrics creates a new Metrics instance with the specified collectors enabled.
 func NewMetrics(httpCounters, grpcCounters, jobMetrics bool, l logger.Logger) Metrics {
 	m := Metrics{
 		reg: prometheus.NewRegistry(),
@@ -87,6 +89,7 @@ func NewMetrics(httpCounters, grpcCounters, jobMetrics bool, l logger.Logger) Me
 	return m
 }
 
+// Listen starts the metrics HTTP server on the specified port.
 func (m *Metrics) Listen(port int) {
 	m.log.Info("Starting metrics listener", logger.IntField("port", port))
 	mux := http.NewServeMux()
@@ -108,12 +111,12 @@ func (m *Metrics) Listen(port int) {
 				return
 			}
 		}
-
 	}()
 	m.errChan = errChan
 	m.stopChan = sigChan
 }
 
+// Job metric counter indices.
 const (
 	JobMetricTotal = iota
 	JobMetricTotalSuccess
@@ -146,6 +149,7 @@ func getJobMetricCounters() map[int]prometheus.Counter {
 	return m
 }
 
+// AddCustomMetric registers a custom Prometheus collector.
 func (m *Metrics) AddCustomMetric(c prometheus.Collector) {
 	m.customMetrics = append(m.customMetrics, c)
 	m.reg.MustRegister(m.customMetrics[len(m.customMetrics)-1])
@@ -153,7 +157,12 @@ func (m *Metrics) AddCustomMetric(c prometheus.Collector) {
 
 // GrpcRequestsInterceptor implements gRPC unary interceptor interface
 // Note: interface{} usage required by gRPC library signature
-func (m *Metrics) GrpcRequestsInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+func (m *Metrics) GrpcRequestsInterceptor(
+	ctx context.Context,
+	req interface{},
+	info *grpc.UnaryServerInfo,
+	handler grpc.UnaryHandler,
+) (resp interface{}, err error) {
 	start := time.Now()
 
 	m.TotalGrpcRequestsCounter.Inc()
@@ -167,6 +176,7 @@ func (m *Metrics) GrpcRequestsInterceptor(ctx context.Context, req interface{}, 
 	return h, err
 }
 
+// IncrementHttpResponseCounter increments the counter for the given HTTP status code.
 func (m *Metrics) IncrementHttpResponseCounter(code int) {
 	_, ok := m.HttpRequestsCounters[code]
 	if !ok {
@@ -176,6 +186,7 @@ func (m *Metrics) IncrementHttpResponseCounter(code int) {
 	m.HttpRequestsCounters[code].Inc()
 }
 
+// IncrementGrpcResponseCounter increments the counter for the given gRPC status code.
 func (m *Metrics) IncrementGrpcResponseCounter(code codes.Code) {
 	_, ok := m.GrpcRequestsCounters[int(code)]
 	if !ok {

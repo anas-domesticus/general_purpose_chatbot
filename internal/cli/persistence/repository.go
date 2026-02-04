@@ -39,7 +39,7 @@ func (r *UserRepository) WithTx(tx pgx.Tx) *UserRepository {
 	}
 }
 
-// Domain types (simple examples)
+// User represents a user entity in the domain model
 type User struct {
 	ID        int64     `json:"id"`
 	UUID      uuid.UUID `json:"uuid"`
@@ -50,6 +50,7 @@ type User struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// CreateUserRequest contains the parameters for creating a new user
 type CreateUserRequest struct {
 	Email  string `json:"email"`
 	Name   string `json:"name"`

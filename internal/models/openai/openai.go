@@ -11,15 +11,15 @@ import (
 	"google.golang.org/adk/model"
 )
 
-// OpenAIModel implements the model.LLM interface for OpenAI's GPT models.
-type OpenAIModel struct {
+// Model implements the model.LLM interface for OpenAI's GPT models.
+type Model struct {
 	client    *openai.Client
 	modelName string
 	logger    *slog.Logger
 }
 
-// NewOpenAIModel creates a new OpenAI model instance.
-func NewOpenAIModel(apiKey, modelName string) (*OpenAIModel, error) {
+// New creates a new OpenAI model instance.
+func New(apiKey, modelName string) (*Model, error) {
 	if apiKey == "" {
 		return nil, fmt.Errorf("API key is required")
 	}
@@ -29,7 +29,7 @@ func NewOpenAIModel(apiKey, modelName string) (*OpenAIModel, error) {
 
 	client := openai.NewClient(option.WithAPIKey(apiKey))
 
-	return &OpenAIModel{
+	return &Model{
 		client:    &client,
 		modelName: modelName,
 		logger:    slog.Default(),
@@ -37,13 +37,13 @@ func NewOpenAIModel(apiKey, modelName string) (*OpenAIModel, error) {
 }
 
 // Name returns the model name.
-func (o *OpenAIModel) Name() string {
+func (o *Model) Name() string {
 	return o.modelName
 }
 
 // GenerateContent generates content using the OpenAI model.
 // This implementation only supports non-streaming mode.
-func (o *OpenAIModel) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
+func (o *Model) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
 	return func(yield func(*model.LLMResponse, error) bool) {
 		if stream {
 			yield(nil, fmt.Errorf("streaming not supported"))
@@ -56,7 +56,7 @@ func (o *OpenAIModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 }
 
 // generateContentNonStreaming performs a non-streaming content generation request.
-func (o *OpenAIModel) generateContentNonStreaming(ctx context.Context, req *model.LLMRequest) (*model.LLMResponse, error) {
+func (o *Model) generateContentNonStreaming(ctx context.Context, req *model.LLMRequest) (*model.LLMResponse, error) {
 	// Transform ADK request to OpenAI format
 	messages, err := transformADKToOpenAI(req.Contents)
 	if err != nil {

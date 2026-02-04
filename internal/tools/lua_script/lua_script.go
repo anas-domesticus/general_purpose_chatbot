@@ -20,17 +20,17 @@ const (
 
 // Args represents the arguments for the Lua script tool
 type Args struct {
-	Script    string            `json:"script" jsonschema:"required" jsonschema_description:"Lua script code to execute"`
-	Variables map[string]any    `json:"variables,omitempty" jsonschema_description:"Variables to pass to the script (accessible as globals)"`
-	Timeout   int               `json:"timeout,omitempty" jsonschema_description:"Execution timeout in seconds (default: 5, max: 30)"`
+	Script    string         `json:"script" jsonschema:"required" jsonschema_description:"Lua script code to execute"`
+	Variables map[string]any `json:"variables,omitempty" jsonschema_description:"Variables to pass to the script (accessible as globals)"`
+	Timeout   int            `json:"timeout,omitempty" jsonschema_description:"Execution timeout in seconds (default: 5, max: 30)"`
 }
 
 // Result represents the result of the Lua script tool
 type Result struct {
-	Output   any    `json:"output,omitempty"`
+	Output   any      `json:"output,omitempty"`
 	Logs     []string `json:"logs,omitempty"`
-	Error    string `json:"error,omitempty"`
-	Duration string `json:"duration"`
+	Error    string   `json:"error,omitempty"`
+	Duration string   `json:"duration"`
 }
 
 // Config holds configuration for creating the Lua script tool
@@ -102,63 +102,63 @@ func (e *luaExecutor) execute(ctx context.Context, script string, variables map[
 }
 
 // openSafeLibraries opens only safe Lua standard libraries
-func openSafeLibraries(L *lua.LState) {
+func openSafeLibraries(ls *lua.LState) {
 	// Base library (without dangerous functions)
-	lua.OpenBase(L)
+	lua.OpenBase(ls)
 
 	// Remove dangerous base functions
-	L.SetGlobal("dofile", lua.LNil)
-	L.SetGlobal("loadfile", lua.LNil)
-	L.SetGlobal("load", lua.LNil)
-	L.SetGlobal("loadstring", lua.LNil)
+	ls.SetGlobal("dofile", lua.LNil)
+	ls.SetGlobal("loadfile", lua.LNil)
+	ls.SetGlobal("load", lua.LNil)
+	ls.SetGlobal("loadstring", lua.LNil)
 
 	// Safe libraries
-	lua.OpenString(L)
-	lua.OpenTable(L)
-	lua.OpenMath(L)
+	lua.OpenString(ls)
+	lua.OpenTable(ls)
+	lua.OpenMath(ls)
 
 	// Safe subset of os (only time functions)
-	registerSafeOS(L)
+	registerSafeOS(ls)
 }
 
 // registerSafeOS registers a safe subset of os functions
-func registerSafeOS(L *lua.LState) {
-	osMod := L.NewTable()
+func registerSafeOS(ls *lua.LState) {
+	osMod := ls.NewTable()
 
 	// os.time() - returns current time
-	L.SetField(osMod, "time", L.NewFunction(func(L *lua.LState) int {
-		L.Push(lua.LNumber(time.Now().Unix()))
+	ls.SetField(osMod, "time", ls.NewFunction(func(l *lua.LState) int {
+		l.Push(lua.LNumber(time.Now().Unix()))
 		return 1
 	}))
 
 	// os.date() - format date string
-	L.SetField(osMod, "date", L.NewFunction(func(L *lua.LState) int {
-		format := L.OptString(1, "%c")
+	ls.SetField(osMod, "date", ls.NewFunction(func(l *lua.LState) int {
+		format := l.OptString(1, "%c")
 		t := time.Now()
-		if L.GetTop() >= 2 {
-			t = time.Unix(int64(L.CheckNumber(2)), 0)
+		if l.GetTop() >= 2 {
+			t = time.Unix(int64(l.CheckNumber(2)), 0)
 		}
 		// Simple format conversion (subset)
 		result := formatTime(format, t)
-		L.Push(lua.LString(result))
+		l.Push(lua.LString(result))
 		return 1
 	}))
 
 	// os.difftime() - difference between times
-	L.SetField(osMod, "difftime", L.NewFunction(func(L *lua.LState) int {
-		t2 := L.CheckNumber(1)
-		t1 := L.CheckNumber(2)
-		L.Push(lua.LNumber(t2 - t1))
+	ls.SetField(osMod, "difftime", ls.NewFunction(func(l *lua.LState) int {
+		t2 := l.CheckNumber(1)
+		t1 := l.CheckNumber(2)
+		l.Push(lua.LNumber(t2 - t1))
 		return 1
 	}))
 
 	// os.clock() - CPU time used
-	L.SetField(osMod, "clock", L.NewFunction(func(L *lua.LState) int {
-		L.Push(lua.LNumber(float64(time.Now().UnixNano()) / 1e9))
+	ls.SetField(osMod, "clock", ls.NewFunction(func(l *lua.LState) int {
+		l.Push(lua.LNumber(float64(time.Now().UnixNano()) / 1e9))
 		return 1
 	}))
 
-	L.SetGlobal("os", osMod)
+	ls.SetGlobal("os", osMod)
 }
 
 // formatTime converts Lua date format to Go time format (subset)
@@ -188,12 +188,12 @@ func formatTime(format string, t time.Time) string {
 }
 
 // registerPrintFunction registers a print function that captures output
-func registerPrintFunction(L *lua.LState, logs *[]string) {
-	L.SetGlobal("print", L.NewFunction(func(L *lua.LState) int {
-		top := L.GetTop()
+func registerPrintFunction(ls *lua.LState, logs *[]string) {
+	ls.SetGlobal("print", ls.NewFunction(func(l *lua.LState) int {
+		top := l.GetTop()
 		var parts []string
 		for i := 1; i <= top; i++ {
-			parts = append(parts, L.ToStringMeta(L.Get(i)).String())
+			parts = append(parts, l.ToStringMeta(l.Get(i)).String())
 		}
 		msg := ""
 		for i, p := range parts {
@@ -208,49 +208,49 @@ func registerPrintFunction(L *lua.LState, logs *[]string) {
 }
 
 // registerJSONModule registers JSON encode/decode functions
-func registerJSONModule(L *lua.LState) {
-	jsonMod := L.NewTable()
+func registerJSONModule(ls *lua.LState) {
+	jsonMod := ls.NewTable()
 
 	// json.encode(value) - convert Lua value to JSON string
-	L.SetField(jsonMod, "encode", L.NewFunction(func(L *lua.LState) int {
-		value := L.Get(1)
+	ls.SetField(jsonMod, "encode", ls.NewFunction(func(l *lua.LState) int {
+		value := l.Get(1)
 		goValue := luaValueToGo(value)
 		data, err := json.Marshal(goValue)
 		if err != nil {
-			L.Push(lua.LNil)
-			L.Push(lua.LString(err.Error()))
+			l.Push(lua.LNil)
+			l.Push(lua.LString(err.Error()))
 			return 2
 		}
-		L.Push(lua.LString(string(data)))
+		l.Push(lua.LString(string(data)))
 		return 1
 	}))
 
 	// json.decode(string) - parse JSON string to Lua value
-	L.SetField(jsonMod, "decode", L.NewFunction(func(L *lua.LState) int {
-		str := L.CheckString(1)
+	ls.SetField(jsonMod, "decode", ls.NewFunction(func(l *lua.LState) int {
+		str := l.CheckString(1)
 		var value any
 		if err := json.Unmarshal([]byte(str), &value); err != nil {
-			L.Push(lua.LNil)
-			L.Push(lua.LString(err.Error()))
+			l.Push(lua.LNil)
+			l.Push(lua.LString(err.Error()))
 			return 2
 		}
-		L.Push(goValueToLua(L, value))
+		l.Push(goValueToLua(l, value))
 		return 1
 	}))
 
-	L.SetGlobal("json", jsonMod)
+	ls.SetGlobal("json", jsonMod)
 }
 
 // setVariables sets Go values as Lua globals
-func setVariables(L *lua.LState, variables map[string]any) error {
+func setVariables(ls *lua.LState, variables map[string]any) error {
 	for name, value := range variables {
-		L.SetGlobal(name, goValueToLua(L, value))
+		ls.SetGlobal(name, goValueToLua(ls, value))
 	}
 	return nil
 }
 
 // goValueToLua converts a Go value to a Lua value
-func goValueToLua(L *lua.LState, value any) lua.LValue {
+func goValueToLua(ls *lua.LState, value any) lua.LValue {
 	if value == nil {
 		return lua.LNil
 	}
@@ -271,19 +271,19 @@ func goValueToLua(L *lua.LState, value any) lua.LValue {
 	case string:
 		return lua.LString(v)
 	case []any:
-		tbl := L.NewTable()
+		tbl := ls.NewTable()
 		for i, item := range v {
-			tbl.RawSetInt(i+1, goValueToLua(L, item))
+			tbl.RawSetInt(i+1, goValueToLua(ls, item))
 		}
 		return tbl
 	case map[string]any:
-		tbl := L.NewTable()
+		tbl := ls.NewTable()
 		for key, val := range v {
-			tbl.RawSetString(key, goValueToLua(L, val))
+			tbl.RawSetString(key, goValueToLua(ls, val))
 		}
 		return tbl
 	default:
-		// Try JSON marshaling for complex types
+		// Try JSON marshalling for complex types
 		data, err := json.Marshal(v)
 		if err != nil {
 			return lua.LString(fmt.Sprintf("%v", v))
