@@ -9,13 +9,13 @@ import (
 
 type testConfig struct {
 	CommonConfig `yaml:",inline"`
-	Http         HttpServerConfig  `yaml:"http,inline"`
-	Database     DatabaseConfig    `yaml:"database,inline"`
-	Metrics      MetricsConfig     `yaml:"metrics,inline"`
-	
-	APIKey       string   `env:"API_KEY" yaml:"api_key" required:"true"`
-	Debug        bool     `env:"DEBUG" yaml:"debug" default:"false"`
-	Features     []string `env:"FEATURES" yaml:"features"`
+	Http         HttpServerConfig `yaml:"http,inline"`
+	Database     DatabaseConfig   `yaml:"database,inline"`
+	Metrics      MetricsConfig    `yaml:"metrics,inline"`
+
+	APIKey   string   `env:"API_KEY" yaml:"api_key" required:"true"`
+	Debug    bool     `env:"DEBUG" yaml:"debug" default:"false"`
+	Features []string `env:"FEATURES" yaml:"features"`
 }
 
 // Validate implements the Validator interface to validate embedded structs
@@ -47,24 +47,24 @@ func TestGetConfigFromEnvVars(t *testing.T) {
 			want: testConfig{
 				CommonConfig: CommonConfig{LogLevel: "info"},
 				Http:         HttpServerConfig{Port: 8080, ReadTimeoutSeconds: 15, WriteTimeoutSeconds: 15, IdleTimeoutSeconds: 60, MaxHeaderBytes: 1048576},
-				Database:     DatabaseConfig{
-					URL: "",
-					Host: "localhost",
-					Port: 5432,
-					Database: "chatbot",
-					Username: "postgres",
-					Password: "postgres",
-					SSLMode: "disable",
-					MaxConnections: 25,
-					MinConnections: 5,
-					MaxIdleTime: "5m",
-					MaxLifetime: "30m",
-					ConnectTimeout: "10s",
+				Database: DatabaseConfig{
+					URL:              "",
+					Host:             "localhost",
+					Port:             5432,
+					Database:         "chatbot",
+					Username:         "postgres",
+					Password:         "postgres",
+					SSLMode:          "disable",
+					MaxConnections:   25,
+					MinConnections:   5,
+					MaxIdleTime:      "5m",
+					MaxLifetime:      "30m",
+					ConnectTimeout:   "10s",
 					StatementTimeout: "30s",
 				},
-				Metrics:      MetricsConfig{Port: 9090, ExposeMetrics: false, EnableHttpMetrics: false, EnableJobMetrics: false},
-				APIKey:       "test-key",
-				Debug:        false,
+				Metrics: MetricsConfig{Port: 9090, ExposeMetrics: false, EnableHttpMetrics: false, EnableJobMetrics: false},
+				APIKey:  "test-key",
+				Debug:   false,
 			},
 			wantErr: false,
 		},
@@ -81,25 +81,25 @@ func TestGetConfigFromEnvVars(t *testing.T) {
 			want: testConfig{
 				CommonConfig: CommonConfig{LogLevel: "debug"},
 				Http:         HttpServerConfig{Port: 3000, ReadTimeoutSeconds: 15, WriteTimeoutSeconds: 15, IdleTimeoutSeconds: 60, MaxHeaderBytes: 1048576},
-				Database:     DatabaseConfig{
-					URL: "postgres://test:test@testhost:5432/testdb",
-					Host: "localhost",
-					Port: 5432,
-					Database: "chatbot",
-					Username: "postgres",
-					Password: "postgres",
-					SSLMode: "disable",
-					MaxConnections: 25,
-					MinConnections: 5,
-					MaxIdleTime: "5m",
-					MaxLifetime: "30m",
-					ConnectTimeout: "10s",
+				Database: DatabaseConfig{
+					URL:              "postgres://test:test@testhost:5432/testdb",
+					Host:             "localhost",
+					Port:             5432,
+					Database:         "chatbot",
+					Username:         "postgres",
+					Password:         "postgres",
+					SSLMode:          "disable",
+					MaxConnections:   25,
+					MinConnections:   5,
+					MaxIdleTime:      "5m",
+					MaxLifetime:      "30m",
+					ConnectTimeout:   "10s",
 					StatementTimeout: "30s",
 				},
-				Metrics:      MetricsConfig{Port: 9090, ExposeMetrics: false, EnableHttpMetrics: false, EnableJobMetrics: false},
-				APIKey:       "env-key",
-				Debug:        true,
-				Features:     []string{"feature1", "feature2", "feature3"},
+				Metrics:  MetricsConfig{Port: 9090, ExposeMetrics: false, EnableHttpMetrics: false, EnableJobMetrics: false},
+				APIKey:   "env-key",
+				Debug:    true,
+				Features: []string{"feature1", "feature2", "feature3"},
 			},
 			wantErr: false,
 		},
@@ -125,7 +125,7 @@ func TestGetConfigFromEnvVars(t *testing.T) {
 
 			// Set test environment variables
 			for k, v := range tc.envVars {
-				os.Setenv(k, v)
+				_ = os.Setenv(k, v)
 			}
 
 			// Test the function

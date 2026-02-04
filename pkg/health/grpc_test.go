@@ -43,7 +43,7 @@ func TestGRPCHealthUpdater(t *testing.T) {
 	t.Run("initial status is NOT_SERVING", func(t *testing.T) {
 		lis, err := net.Listen("tcp", "127.0.0.1:0")
 		require.NoError(t, err)
-		defer lis.Close()
+		defer func() { _ = lis.Close() }()
 
 		server := grpc.NewServer()
 		h := New()
@@ -52,13 +52,13 @@ func TestGRPCHealthUpdater(t *testing.T) {
 		updater := h.RegisterWithGRPC(server)
 		defer updater.Stop()
 
-		go server.Serve(lis)
+		go func() { _ = server.Serve(lis) }()
 		defer server.Stop()
 
 		// Connect client
 		conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 		require.NoError(t, err)
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		client := grpc_health_v1.NewHealthClient(conn)
 
@@ -79,7 +79,7 @@ func TestGRPCHealthUpdater(t *testing.T) {
 	t.Run("updates to SERVING when healthy", func(t *testing.T) {
 		lis, err := net.Listen("tcp", "127.0.0.1:0")
 		require.NoError(t, err)
-		defer lis.Close()
+		defer func() { _ = lis.Close() }()
 
 		server := grpc.NewServer()
 		h := New()
@@ -88,13 +88,13 @@ func TestGRPCHealthUpdater(t *testing.T) {
 		updater := h.RegisterWithGRPCAndInterval(server, 100*time.Millisecond)
 		defer updater.Stop()
 
-		go server.Serve(lis)
+		go func() { _ = server.Serve(lis) }()
 		defer server.Stop()
 
 		// Connect client
 		conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 		require.NoError(t, err)
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		client := grpc_health_v1.NewHealthClient(conn)
 
@@ -109,7 +109,7 @@ func TestGRPCHealthUpdater(t *testing.T) {
 	t.Run("updates to NOT_SERVING when unhealthy", func(t *testing.T) {
 		lis, err := net.Listen("tcp", "127.0.0.1:0")
 		require.NoError(t, err)
-		defer lis.Close()
+		defer func() { _ = lis.Close() }()
 
 		server := grpc.NewServer()
 		h := New(WithFailureThreshold(1))
@@ -120,13 +120,13 @@ func TestGRPCHealthUpdater(t *testing.T) {
 		updater := h.RegisterWithGRPCAndInterval(server, 100*time.Millisecond)
 		defer updater.Stop()
 
-		go server.Serve(lis)
+		go func() { _ = server.Serve(lis) }()
 		defer server.Stop()
 
 		// Connect client
 		conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 		require.NoError(t, err)
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		client := grpc_health_v1.NewHealthClient(conn)
 
@@ -141,7 +141,7 @@ func TestGRPCHealthUpdater(t *testing.T) {
 	t.Run("transitions from SERVING to NOT_SERVING", func(t *testing.T) {
 		lis, err := net.Listen("tcp", "127.0.0.1:0")
 		require.NoError(t, err)
-		defer lis.Close()
+		defer func() { _ = lis.Close() }()
 
 		server := grpc.NewServer()
 		h := New(WithFailureThreshold(1))
@@ -152,13 +152,13 @@ func TestGRPCHealthUpdater(t *testing.T) {
 		updater := h.RegisterWithGRPCAndInterval(server, 100*time.Millisecond)
 		defer updater.Stop()
 
-		go server.Serve(lis)
+		go func() { _ = server.Serve(lis) }()
 		defer server.Stop()
 
 		// Connect client
 		conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 		require.NoError(t, err)
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		client := grpc_health_v1.NewHealthClient(conn)
 
@@ -185,7 +185,7 @@ func TestGRPCHealthUpdaterStop(t *testing.T) {
 	t.Run("graceful stop sets NOT_SERVING", func(t *testing.T) {
 		lis, err := net.Listen("tcp", "127.0.0.1:0")
 		require.NoError(t, err)
-		defer lis.Close()
+		defer func() { _ = lis.Close() }()
 
 		server := grpc.NewServer()
 		h := New()
@@ -193,13 +193,13 @@ func TestGRPCHealthUpdaterStop(t *testing.T) {
 
 		updater := h.RegisterWithGRPCAndInterval(server, 100*time.Millisecond)
 
-		go server.Serve(lis)
+		go func() { _ = server.Serve(lis) }()
 		defer server.Stop()
 
 		// Connect client
 		conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 		require.NoError(t, err)
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		client := grpc_health_v1.NewHealthClient(conn)
 

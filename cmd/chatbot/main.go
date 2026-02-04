@@ -73,6 +73,7 @@ func main() {
 	llmModel, err := createLLMModel(ctx, cfg, log)
 	if err != nil {
 		log.Error("Failed to create LLM model", logger.ErrorField(err))
+		cancel()
 		os.Exit(1)
 	}
 
@@ -214,7 +215,13 @@ func main() {
 }
 
 // startHealthServer initializes and starts the health check HTTP server
-func startHealthServer(ctx context.Context, cfg *appconfig.AppConfig, slackConn *slack.Connector, telegramConn *telegram.Connector, log logger.Logger) error {
+func startHealthServer(
+	ctx context.Context,
+	cfg *appconfig.AppConfig,
+	slackConn *slack.Connector,
+	telegramConn *telegram.Connector,
+	log logger.Logger,
+) error {
 	if !cfg.Health.Enabled {
 		log.Info("Health checks disabled")
 		return nil
@@ -276,7 +283,7 @@ func createSessionService(ctx context.Context, cfg *appconfig.SessionConfig, log
 		log.Info("Using local file-based session storage", logger.StringField("directory", cfg.LocalDir))
 
 		// Ensure directory exists
-		if err := os.MkdirAll(cfg.LocalDir, 0755); err != nil {
+		if err := os.MkdirAll(cfg.LocalDir, 0o755); err != nil {
 			return nil, fmt.Errorf("failed to create session directory: %w", err)
 		}
 
@@ -348,7 +355,7 @@ func createSessionManager(ctx context.Context, cfg *appconfig.SessionConfig, log
 		log.Info("Using local file-based session manager", logger.StringField("directory", cfg.LocalDir))
 
 		// Ensure directory exists
-		if err := os.MkdirAll(cfg.LocalDir, 0755); err != nil {
+		if err := os.MkdirAll(cfg.LocalDir, 0o755); err != nil {
 			return nil, fmt.Errorf("failed to create session directory: %w", err)
 		}
 

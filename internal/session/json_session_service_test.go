@@ -139,7 +139,7 @@ func TestJSONSessionService_Create(t *testing.T) {
 	// Create temporary directory for test
 	tmpDir, err := os.MkdirTemp("", "session_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create service
 	service := NewLocalJSONSessionService(tmpDir)
@@ -171,7 +171,7 @@ func TestJSONSessionService_Create(t *testing.T) {
 func TestJSONSessionService_CreateWithSessionID(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "session_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	service := NewLocalJSONSessionService(tmpDir)
 	ctx := context.Background()
@@ -191,7 +191,7 @@ func TestJSONSessionService_CreateWithSessionID(t *testing.T) {
 func TestJSONSessionService_CreateDuplicate(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "session_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	service := NewLocalJSONSessionService(tmpDir)
 	ctx := context.Background()
@@ -215,7 +215,7 @@ func TestJSONSessionService_CreateDuplicate(t *testing.T) {
 func TestJSONSessionService_Get(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "session_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	service := NewLocalJSONSessionService(tmpDir)
 	ctx := context.Background()
@@ -252,7 +252,7 @@ func TestJSONSessionService_Get(t *testing.T) {
 func TestJSONSessionService_List(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "session_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	service := NewLocalJSONSessionService(tmpDir)
 	ctx := context.Background()
@@ -302,7 +302,7 @@ func TestJSONSessionService_List(t *testing.T) {
 func TestJSONSessionService_Delete(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "session_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	service := NewLocalJSONSessionService(tmpDir)
 	ctx := context.Background()
@@ -350,7 +350,7 @@ func TestJSONSessionService_Delete(t *testing.T) {
 func TestJSONSessionService_InvalidRequests(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "session_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	service := NewLocalJSONSessionService(tmpDir)
 	ctx := context.Background()
@@ -415,7 +415,7 @@ func TestJSONSessionService_S3Backend(t *testing.T) {
 func TestJSONSessionService_AppendEvent(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "session_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	service := NewLocalJSONSessionService(tmpDir)
 	ctx := context.Background()
@@ -462,7 +462,7 @@ func TestJSONSessionService_AppendEvent(t *testing.T) {
 func TestJSONSessionService_StateOperations(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "session_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	service := NewLocalJSONSessionService(tmpDir)
 	ctx := context.Background()
@@ -515,7 +515,7 @@ func TestJSONSessionService_StateOperations(t *testing.T) {
 func TestNewSessionService(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "session_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	log := testLogger()
 

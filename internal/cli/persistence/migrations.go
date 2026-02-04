@@ -39,7 +39,9 @@ func (m *MigrationManager) RunMigrations() error {
 	if err != nil {
 		return fmt.Errorf("create migrator: %w", err)
 	}
-	defer migrator.Close()
+	defer func() {
+		_, _ = migrator.Close()
+	}()
 
 	m.logger.Info("Starting database migrations")
 

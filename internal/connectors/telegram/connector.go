@@ -135,7 +135,6 @@ func (c *Connector) handleUpdate(ctx context.Context, b *bot.Bot, update *models
 	}, c, func() string {
 		return c.GetUserInfo(ctx, userID)
 	})
-
 	if err != nil {
 		c.logger.Error("Error from executor", logger.ErrorField(err))
 		// Send error message to user

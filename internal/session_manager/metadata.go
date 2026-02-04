@@ -68,7 +68,7 @@ func (sm *sessionManager) saveMetadata(ctx context.Context) error {
 
 	// Ensure directory exists
 	dir := filepath.Dir(sm.config.MetadataFile)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("failed to create metadata directory: %w", err)
 	}
 

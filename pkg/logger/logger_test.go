@@ -306,7 +306,6 @@ func TestGrpcRequestsInterceptor(t *testing.T) {
 		buf.Reset()
 
 		resp, err := logger.GrpcRequestsInterceptor(context.Background(), "test-req", info, successHandler)
-
 		if err != nil {
 			t.Errorf("Expected no error, got %v", err)
 		}
@@ -440,7 +439,7 @@ func TestHTTPMiddleware(t *testing.T) {
 		// Create a test handler
 		testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("test response"))
+			_, _ = w.Write([]byte("test response"))
 		})
 
 		// Wrap with middleware
@@ -522,7 +521,7 @@ func TestHTTPMiddleware(t *testing.T) {
 		// Create a test handler that returns error
 		testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("error"))
+			_, _ = w.Write([]byte("error"))
 		})
 
 		// Wrap with middleware
@@ -660,7 +659,6 @@ func TestResponseWriter(t *testing.T) {
 
 		data := []byte("test data")
 		n, err := rw.Write(data)
-
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}

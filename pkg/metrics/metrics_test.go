@@ -12,16 +12,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
 
 func TestMetrics_Listen(t *testing.T) {
-	var expectedOut = `# HELP app_grpc_request_duration_seconds gRPC request duration in seconds
+	expectedOut := `# HELP app_grpc_request_duration_seconds gRPC request duration in seconds
 # TYPE app_grpc_request_duration_seconds histogram
 app_grpc_request_duration_seconds_bucket{le="0.1"} 0
 app_grpc_request_duration_seconds_bucket{le="0.3"} 0
@@ -90,6 +90,8 @@ app_total_http_requests 0
 	assert.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	bodyBytes, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	_ = resp.Body.Close()
 	assert.Equal(t, expectedOut, string(bodyBytes))
 
 	// assert incorrect path
@@ -98,6 +100,7 @@ app_total_http_requests 0
 	resp, err = http.DefaultClient.Do(req)
 	assert.NoError(t, err)
 	assert.Equal(t, 404, resp.StatusCode)
+	_ = resp.Body.Close()
 
 	m.stopChan <- os.Interrupt
 	assert.True(t, errors.Is(<-m.errChan, http.ErrServerClosed))
@@ -144,6 +147,8 @@ test_foo2 1.234
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 	bodyBytes, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	_ = resp.Body.Close()
 	assert.Equal(t, before, string(bodyBytes))
 
 	customMetric0.Inc()
@@ -155,6 +160,8 @@ test_foo2 1.234
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 	bodyBytes, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	_ = resp.Body.Close()
 	assert.Equal(t, after, string(bodyBytes))
 }
 
@@ -171,10 +178,10 @@ func TestHTTPMiddleware(t *testing.T) {
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/error" {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("error"))
+			_, _ = w.Write([]byte("error"))
 		} else {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("success"))
+			_, _ = w.Write([]byte("success"))
 		}
 	})
 
@@ -243,7 +250,7 @@ func TestResponseWriter(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		rw := &responseWriter{ResponseWriter: recorder, statusCode: 200}
 
-		rw.Write([]byte("test"))
+		_, _ = rw.Write([]byte("test"))
 		assert.Equal(t, 200, rw.statusCode)
 	})
 }

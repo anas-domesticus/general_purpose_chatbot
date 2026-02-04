@@ -22,12 +22,12 @@ type DatabaseConfig struct {
 	SSLMode  string `env:"DB_SSLMODE" yaml:"sslmode" default:"disable"`
 
 	// Connection pool settings
-	MaxConnections    int    `env:"DB_MAX_CONNECTIONS" yaml:"max_connections" default:"25"`
-	MinConnections    int    `env:"DB_MIN_CONNECTIONS" yaml:"min_connections" default:"5"`
-	MaxIdleTime       string `env:"DB_MAX_IDLE_TIME" yaml:"max_idle_time" default:"5m"`
-	MaxLifetime       string `env:"DB_MAX_LIFETIME" yaml:"max_lifetime" default:"30m"`
-	ConnectTimeout    string `env:"DB_CONNECT_TIMEOUT" yaml:"connect_timeout" default:"10s"`
-	StatementTimeout  string `env:"DB_STATEMENT_TIMEOUT" yaml:"statement_timeout" default:"30s"`
+	MaxConnections   int    `env:"DB_MAX_CONNECTIONS" yaml:"max_connections" default:"25"`
+	MinConnections   int    `env:"DB_MIN_CONNECTIONS" yaml:"min_connections" default:"5"`
+	MaxIdleTime      string `env:"DB_MAX_IDLE_TIME" yaml:"max_idle_time" default:"5m"`
+	MaxLifetime      string `env:"DB_MAX_LIFETIME" yaml:"max_lifetime" default:"30m"`
+	ConnectTimeout   string `env:"DB_CONNECT_TIMEOUT" yaml:"connect_timeout" default:"10s"`
+	StatementTimeout string `env:"DB_STATEMENT_TIMEOUT" yaml:"statement_timeout" default:"30s"`
 }
 
 // GetConnectionString returns the database connection string

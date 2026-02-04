@@ -52,7 +52,7 @@ func TestApplyWithDefaults(t *testing.T) {
 	// Test handler
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("test response"))
+		_, _ = w.Write([]byte("test response"))
 	})
 
 	// Apply middleware using Chi router
@@ -192,7 +192,7 @@ func TestStripPrefixIntegration(t *testing.T) {
 	}
 
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(r.URL.Path))
+		_, _ = w.Write([]byte(r.URL.Path))
 	})
 
 	router := chi.NewRouter()
@@ -220,7 +220,7 @@ func TestWithLogger(t *testing.T) {
 
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("test response"))
+		_, _ = w.Write([]byte("test response"))
 	})
 
 	// Apply middleware with logger

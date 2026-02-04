@@ -274,7 +274,12 @@ func ClientIPField(ip string) LogField {
 
 // GrpcRequestsInterceptor implements gRPC unary interceptor interface for logging
 // Note: interface{} usage required by gRPC library signature
-func (l *logger) GrpcRequestsInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+func (l *logger) GrpcRequestsInterceptor(
+	ctx context.Context,
+	req interface{},
+	info *grpc.UnaryServerInfo,
+	handler grpc.UnaryHandler,
+) (resp interface{}, err error) {
 	start := time.Now()
 
 	// Ensure correlation ID is in context

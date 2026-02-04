@@ -49,11 +49,11 @@ func (p *LocalFileProvider) Write(ctx context.Context, path string, data []byte)
 
 	// Create directory if it doesn't exist
 	dir := filepath.Dir(fullPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
 
-	return os.WriteFile(fullPath, data, 0644)
+	return os.WriteFile(fullPath, data, 0o644)
 }
 
 // Exists checks if a file exists on the local filesystem

@@ -31,7 +31,7 @@ func TestListen(t *testing.T) {
 			t.Fatalf("Failed to find available port: %v", err)
 		}
 		port := listener.Addr().(*net.TCPAddr).Port
-		listener.Close()
+		_ = listener.Close()
 
 		// Start the server
 		errChan, closer, gracefulCloser, err := Listen(server, port, log)
@@ -45,7 +45,7 @@ func TestListen(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to connect to server: %v", err)
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Test graceful shutdown
 		go func() {
@@ -92,7 +92,7 @@ func TestListen(t *testing.T) {
 			t.Fatalf("Failed to find available port: %v", err)
 		}
 		port := listener.Addr().(*net.TCPAddr).Port
-		defer listener.Close()
+		defer func() { _ = listener.Close() }()
 
 		server := grpc.NewServer()
 		defer server.Stop()

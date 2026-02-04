@@ -222,7 +222,7 @@ func TestHealthChecker_FailureThreshold(t *testing.T) {
 
 		// Two failures
 		for i := 0; i < 2; i++ {
-			h.CheckLiveness(context.Background())
+			_, _ = h.CheckLiveness(context.Background())
 		}
 
 		// Success should reset counter
@@ -264,7 +264,7 @@ func TestHealthChecker_Timeout(t *testing.T) {
 func TestHealthChecker_ConcurrentChecks(t *testing.T) {
 	t.Run("checks run concurrently", func(t *testing.T) {
 		h := New()
-		
+
 		// Add multiple slow checks
 		for i := 0; i < 3; i++ {
 			h.AddLivenessCheck(&mockCheck{

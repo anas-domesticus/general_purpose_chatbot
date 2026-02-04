@@ -7,12 +7,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
 
 const (
@@ -108,7 +108,6 @@ func (m *Metrics) Listen(port int) {
 				return
 			}
 		}
-
 	}()
 	m.errChan = errChan
 	m.stopChan = sigChan
@@ -153,7 +152,12 @@ func (m *Metrics) AddCustomMetric(c prometheus.Collector) {
 
 // GrpcRequestsInterceptor implements gRPC unary interceptor interface
 // Note: interface{} usage required by gRPC library signature
-func (m *Metrics) GrpcRequestsInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+func (m *Metrics) GrpcRequestsInterceptor(
+	ctx context.Context,
+	req interface{},
+	info *grpc.UnaryServerInfo,
+	handler grpc.UnaryHandler,
+) (resp interface{}, err error) {
 	start := time.Now()
 
 	m.TotalGrpcRequestsCounter.Inc()

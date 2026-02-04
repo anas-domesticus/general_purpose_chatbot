@@ -205,7 +205,7 @@ func (s *JSONSessionService) List(ctx context.Context, req *session.ListRequest)
 	defer s.mutex.RUnlock()
 
 	// Build prefix for file listing
-	prefix := req.AppName
+	var prefix string
 	if req.UserID != "" {
 		// For specific user, we want to match files in that user directory
 		prefix = fmt.Sprintf("%s/%s/", req.AppName, req.UserID)
@@ -304,7 +304,7 @@ func (s *JSONSessionService) AppendEvent(ctx context.Context, sess session.Sessi
 		if state, ok := adkSess.state.(*sessionState); ok {
 			for key, value := range event.Actions.StateDelta {
 				if !isTemporaryKey(key) {
-					state.Set(key, value)
+					_ = state.Set(key, value)
 				}
 			}
 		}

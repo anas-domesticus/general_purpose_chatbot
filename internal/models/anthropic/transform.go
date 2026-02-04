@@ -11,6 +11,14 @@ import (
 	"google.golang.org/genai"
 )
 
+// Image MIME type constants
+const (
+	mimeTypeJPEG = "image/jpeg"
+	mimeTypePNG  = "image/png"
+	mimeTypeGIF  = "image/gif"
+	mimeTypeWebP = "image/webp"
+)
+
 // transformADKToAnthropic converts ADK content messages to Anthropic message params.
 // It extracts system messages separately since Anthropic requires them as a top-level parameter.
 // Returns the messages, system prompt blocks, and any error.
@@ -66,11 +74,12 @@ func transformADKToAnthropic(contents []*genai.Content) ([]anthropic.MessagePara
 				cacheControl := anthropic.NewCacheControlEphemeralParam()
 
 				// Add cache control to the last block based on its type
-				if messages[i].Content[lastBlockIdx].OfText != nil {
+				switch {
+				case messages[i].Content[lastBlockIdx].OfText != nil:
 					messages[i].Content[lastBlockIdx].OfText.CacheControl = cacheControl
-				} else if messages[i].Content[lastBlockIdx].OfImage != nil {
+				case messages[i].Content[lastBlockIdx].OfImage != nil:
 					messages[i].Content[lastBlockIdx].OfImage.CacheControl = cacheControl
-				} else if messages[i].Content[lastBlockIdx].OfToolResult != nil {
+				case messages[i].Content[lastBlockIdx].OfToolResult != nil:
 					messages[i].Content[lastBlockIdx].OfToolResult.CacheControl = cacheControl
 				}
 			}
@@ -139,17 +148,17 @@ func convertPartToContentBlock(part *genai.Part) (anthropic.ContentBlockParamUni
 		// Map MIME types to Anthropic's supported types
 		var anthropicMediaType string
 		switch mediaType {
-		case "image/jpeg":
-			anthropicMediaType = "image/jpeg"
-		case "image/png":
-			anthropicMediaType = "image/png"
-		case "image/gif":
-			anthropicMediaType = "image/gif"
-		case "image/webp":
-			anthropicMediaType = "image/webp"
+		case mimeTypeJPEG:
+			anthropicMediaType = mimeTypeJPEG
+		case mimeTypePNG:
+			anthropicMediaType = mimeTypePNG
+		case mimeTypeGIF:
+			anthropicMediaType = mimeTypeGIF
+		case mimeTypeWebP:
+			anthropicMediaType = mimeTypeWebP
 		default:
 			// Default to jpeg if unknown
-			anthropicMediaType = "image/jpeg"
+			anthropicMediaType = mimeTypeJPEG
 		}
 
 		// Encode data to base64

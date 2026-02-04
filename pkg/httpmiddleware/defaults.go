@@ -5,8 +5,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/unrolled/secure"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
+	"github.com/unrolled/secure"
 )
 
 // Config holds configuration for HTTP middleware application.
@@ -71,6 +71,7 @@ func DefaultConfig() Config {
 //  7. CORS - Handles cross-origin requests
 //  8. Timeout - Adds request timeouts
 //  9. Compression - Compresses responses
+//
 // 10. Heartbeat - Adds /ping health endpoint
 func ApplyToRouter(router chi.Router, config Config) {
 	applyMiddlewareInOrder(router, config)
