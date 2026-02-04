@@ -11,8 +11,6 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/config"
-	"github.com/lewisedginton/general_purpose_chatbot/internal/tools/agent_info"
-	"github.com/lewisedginton/general_purpose_chatbot/internal/tools/http_request"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -46,7 +44,7 @@ type AgentConfig struct {
 type UserInfoFunc func() string
 
 // NewChatAgent creates a factory function that returns a new chat agent with Claude model and MCP configuration
-func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig AgentConfig) (func(PlatformSpecificGuidanceProvider, UserInfoFunc) (agent.Agent, error), error) {
+func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig AgentConfig, tools []tool.Tool) (func(PlatformSpecificGuidanceProvider, UserInfoFunc) (agent.Agent, error), error) {
 	if agentConfig.Logger == nil {
 		return nil, fmt.Errorf("logger is required in AgentConfig")
 	}
@@ -55,29 +53,6 @@ func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig Ag
 
 	// Load agent instructions from system.md in current directory
 	instructions := loadInstructionFile("system.md", log)
-
-	// Create agent info tool with platform-specific handler
-	agentInfoTool, err := agent_info.New(agent_info.Config{
-		AgentName:   agentConfig.Name,
-		Platform:    agentConfig.Platform,
-		Description: agentConfig.Description,
-		Model:       llmModel,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Create HTTP request tool
-	httpRequestTool, err := http_request.New()
-	if err != nil {
-		return nil, err
-	}
-
-	// Start with basic tools
-	tools := []tool.Tool{
-		agentInfoTool,
-		httpRequestTool,
-	}
 
 	// Create MCP toolsets if MCP is enabled
 	var toolsets []tool.Toolset
@@ -125,7 +100,7 @@ func NewChatAgent(llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig Ag
 			}
 		}
 
-		// Create the LLM agent with basic tools and MCP toolsets
+		// Create the LLM agent with tools and MCP toolsets
 		chatAgent, err := llmagent.New(llmagent.Config{
 			Name:        agentConfig.Name,
 			Model:       llmModel,

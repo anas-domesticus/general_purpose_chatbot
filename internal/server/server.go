@@ -24,10 +24,14 @@ import (
 	"github.com/lewisedginton/general_purpose_chatbot/internal/models/openai"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/monitoring"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/session_manager"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/skills_manager"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/storage_manager"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/tools/agent_info"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/tools/http_request"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/model/gemini"
+	"google.golang.org/adk/tool"
 	"google.golang.org/genai"
 )
 
@@ -45,6 +49,7 @@ type Server struct {
 	telegramConnector *telegram.Connector
 	storageManager    *storage_manager.StorageManager
 	sessionManager    session_manager.Manager
+	skillsManager     skills_manager.Manager
 	cancel            context.CancelFunc
 }
 
@@ -55,24 +60,8 @@ func New(ctx context.Context, cfg *appconfig.AppConfig, log logger.Logger) (*Ser
 		log: log,
 	}
 
-	// Create LLM model instance based on configured provider
-	llmModel, err := s.createLLMModel(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create LLM model: %w", err)
-	}
-
-	// Create generic chat agent factory (shared across all platforms)
-	chatAgentFactory, err := agents.NewChatAgent(llmModel, cfg.MCP, agents.AgentConfig{
-		Name:        "chat_assistant",
-		Platform:    "Multi-Platform",
-		Description: "Claude-powered assistant with MCP capabilities",
-		Logger:      log,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create chat agent factory: %w", err)
-	}
-
 	// Create storage manager (handles persistence for sessions and metadata)
+	var err error
 	s.storageManager, err = s.createStorageManager(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create storage manager: %w", err)
@@ -82,6 +71,35 @@ func New(ctx context.Context, cfg *appconfig.AppConfig, log logger.Logger) (*Ser
 	s.sessionManager, err = s.createSessionManager(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session manager: %w", err)
+	}
+
+	// Create skills manager
+	s.skillsManager, err = s.createSkillsManager(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create skills manager: %w", err)
+	}
+
+	// Create LLM model instance based on configured provider
+	llmModel, err := s.createLLMModel(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create LLM model: %w", err)
+	}
+
+	// Create tools for the agent
+	tools, err := s.createTools(llmModel)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tools: %w", err)
+	}
+
+	// Create generic chat agent factory (shared across all platforms)
+	chatAgentFactory, err := agents.NewChatAgent(llmModel, cfg.MCP, agents.AgentConfig{
+		Name:        "chat_assistant",
+		Platform:    "Multi-Platform",
+		Description: "Claude-powered assistant with MCP capabilities",
+		Logger:      log,
+	}, tools)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create chat agent factory: %w", err)
 	}
 
 	// Create executor with agent factory (shared across all platforms)
@@ -327,7 +345,7 @@ func (s *Server) createStorageManager(ctx context.Context) (*storage_manager.Sto
 
 // createSessionManager creates a session manager using the storage manager
 func (s *Server) createSessionManager(ctx context.Context) (session_manager.Manager, error) {
-	// Use storage manager with "sessions" namespace (same as session service)
+	// Use storage manager with "sessions" namespace
 	provider := s.storageManager.GetProvider("sessions")
 
 	return session_manager.New(session_manager.Config{
@@ -335,6 +353,50 @@ func (s *Server) createSessionManager(ctx context.Context) (session_manager.Mana
 		FileProvider: provider,
 		Logger:       s.log,
 	})
+}
+
+// createSkillsManager creates a skills manager using the storage manager
+func (s *Server) createSkillsManager(ctx context.Context) (skills_manager.Manager, error) {
+	// Use storage manager with "skills" namespace
+	provider := s.storageManager.GetProvider("skills")
+
+	return skills_manager.New(skills_manager.Config{
+		FileProvider: provider,
+		Logger:       s.log,
+	})
+}
+
+// createTools creates the tools for the agent
+func (s *Server) createTools(llmModel model.LLM) ([]tool.Tool, error) {
+	var tools []tool.Tool
+
+	// Create agent info tool
+	agentInfoTool, err := agent_info.New(agent_info.Config{
+		AgentName:   "chat_assistant",
+		Platform:    "Multi-Platform",
+		Description: "AI assistant with MCP capabilities",
+		Model:       llmModel,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create agent info tool: %w", err)
+	}
+	tools = append(tools, agentInfoTool)
+
+	// Create HTTP request tool
+	httpRequestTool, err := http_request.New()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create http request tool: %w", err)
+	}
+	tools = append(tools, httpRequestTool)
+
+	// Add skills tools
+	skillsTools, err := s.skillsManager.Tools()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create skills tools: %w", err)
+	}
+	tools = append(tools, skillsTools...)
+
+	return tools, nil
 }
 
 // setupGracefulShutdown sets up signal handling for graceful shutdown
