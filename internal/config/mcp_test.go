@@ -47,7 +47,7 @@ func TestMCPConfigValidation(t *testing.T) {
 				},
 			},
 			expectError: true,
-			errorMsg:    "transport must be one of [stdio, websocket, sse]",
+			errorMsg:    "transport must be one of [stdio, websocket, sse, http]",
 		},
 		{
 			name: "stdio missing command",

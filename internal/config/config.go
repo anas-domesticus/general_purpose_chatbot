@@ -317,7 +317,7 @@ func (c *AppConfig) Validate() error {
 			}
 
 			// Validate transport type
-			validTransports := []string{"stdio", "websocket", "sse"}
+			validTransports := []string{"stdio", "websocket", "sse", "http"}
 			validTransport := false
 			for _, transport := range validTransports {
 				if serverConfig.Transport == transport {
@@ -327,7 +327,7 @@ func (c *AppConfig) Validate() error {
 			}
 			if !validTransport {
 				result = multierror.Append(result, fmt.Errorf(
-					"MCP server '%s': transport must be one of [stdio, websocket, sse], got %q",
+					"MCP server '%s': transport must be one of [stdio, websocket, sse, http], got %q",
 					serverName, serverConfig.Transport))
 			}
 
@@ -338,8 +338,8 @@ func (c *AppConfig) Validate() error {
 				}
 			}
 
-			// Validate websocket/sse configuration
-			if serverConfig.Transport == "websocket" || serverConfig.Transport == "sse" {
+			// Validate websocket/sse/http configuration
+			if serverConfig.Transport == "websocket" || serverConfig.Transport == "sse" || serverConfig.Transport == "http" {
 				if serverConfig.URL == "" {
 					result = multierror.Append(result, fmt.Errorf("MCP server '%s': url is required for %s transport", serverName, serverConfig.Transport))
 				}
