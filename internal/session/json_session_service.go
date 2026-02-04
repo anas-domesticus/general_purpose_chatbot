@@ -7,11 +7,15 @@ import (
 	"fmt"
 	"iter"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"google.golang.org/adk/session"
 )
+
+// eventIDCounter ensures unique event IDs even when time.Now().UnixNano() returns the same value
+var eventIDCounter atomic.Uint64
 
 // JSONSessionService implements the session.Service interface using JSON file storage
 type JSONSessionService struct {
@@ -274,8 +278,10 @@ func (s *JSONSessionService) AppendEvent(ctx context.Context, sess session.Sessi
 	}
 
 	// Generate event ID if not set
+	// Use atomic counter combined with timestamp to ensure uniqueness even under high concurrency
 	if event.ID == "" {
-		event.ID = fmt.Sprintf("event_%d", time.Now().UnixNano())
+		counter := eventIDCounter.Add(1)
+		event.ID = fmt.Sprintf("event_%d_%d", time.Now().UnixNano(), counter)
 	}
 
 	// Set timestamp if not set
