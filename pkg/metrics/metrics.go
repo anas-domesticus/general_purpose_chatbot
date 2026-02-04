@@ -1,3 +1,4 @@
+// Package metrics provides Prometheus metrics collection for HTTP and gRPC requests.
 package metrics
 
 import (
@@ -23,9 +24,9 @@ const (
 type Metrics struct {
 	reg *prometheus.Registry
 
-	TotalHttpRequestsCounter prometheus.Counter
-	HttpRequestsCounters     map[int]prometheus.Counter
-	HttpDurationHistogram    prometheus.Histogram
+	TotalHTTPRequestsCounter prometheus.Counter
+	HTTPRequestsCounters     map[int]prometheus.Counter
+	HTTPDurationHistogram    prometheus.Histogram
 
 	TotalGrpcRequestsCounter prometheus.Counter
 	GrpcRequestsCounters     map[int]prometheus.Counter
@@ -47,21 +48,21 @@ func NewMetrics(httpCounters, grpcCounters, jobMetrics bool, l logger.Logger) Me
 		log: l,
 	}
 	if httpCounters {
-		m.TotalHttpRequestsCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		m.TotalHTTPRequestsCounter = prometheus.NewCounter(prometheus.CounterOpts{
 			Subsystem: subsystem,
 			Name:      "total_http_requests",
 			Help:      "Total HTTP requests",
 		})
-		m.reg.MustRegister(m.TotalHttpRequestsCounter)
-		m.HttpRequestsCounters = make(map[int]prometheus.Counter)
+		m.reg.MustRegister(m.TotalHTTPRequestsCounter)
+		m.HTTPRequestsCounters = make(map[int]prometheus.Counter)
 
-		m.HttpDurationHistogram = prometheus.NewHistogram(prometheus.HistogramOpts{
+		m.HTTPDurationHistogram = prometheus.NewHistogram(prometheus.HistogramOpts{
 			Subsystem: subsystem,
 			Name:      "http_request_duration_seconds",
 			Help:      "HTTP request duration in seconds",
 			Buckets:   []float64{0.1, 0.3, 0.5, 0.7, 1.0, 3.0, 5.0, 7.0, 10.0},
 		})
-		m.reg.MustRegister(m.HttpDurationHistogram)
+		m.reg.MustRegister(m.HTTPDurationHistogram)
 	}
 	if grpcCounters {
 		m.TotalGrpcRequestsCounter = prometheus.NewCounter(prometheus.CounterOpts{
@@ -176,14 +177,14 @@ func (m *Metrics) GrpcRequestsInterceptor(
 	return h, err
 }
 
-// IncrementHttpResponseCounter increments the counter for the given HTTP status code.
-func (m *Metrics) IncrementHttpResponseCounter(code int) {
-	_, ok := m.HttpRequestsCounters[code]
+// IncrementHTTPResponseCounter increments the counter for the given HTTP status code.
+func (m *Metrics) IncrementHTTPResponseCounter(code int) {
+	_, ok := m.HTTPRequestsCounters[code]
 	if !ok {
-		m.HttpRequestsCounters[code] = newTotalHttpReqMetric(code)
-		m.reg.MustRegister(m.HttpRequestsCounters[code])
+		m.HTTPRequestsCounters[code] = newTotalHTTPReqMetric(code)
+		m.reg.MustRegister(m.HTTPRequestsCounters[code])
 	}
-	m.HttpRequestsCounters[code].Inc()
+	m.HTTPRequestsCounters[code].Inc()
 }
 
 // IncrementGrpcResponseCounter increments the counter for the given gRPC status code.
@@ -196,7 +197,7 @@ func (m *Metrics) IncrementGrpcResponseCounter(code codes.Code) {
 	m.GrpcRequestsCounters[int(code)].Inc()
 }
 
-func newTotalHttpReqMetric(code int) prometheus.Counter {
+func newTotalHTTPReqMetric(code int) prometheus.Counter {
 	return prometheus.NewCounter(prometheus.CounterOpts{
 		Subsystem: subsystem,
 		Name:      fmt.Sprintf("total_%d_http_responses", code),
@@ -219,7 +220,7 @@ func (m *Metrics) HTTPMiddleware() func(http.Handler) http.Handler {
 			start := time.Now()
 
 			// Increment total requests counter
-			m.TotalHttpRequestsCounter.Inc()
+			m.TotalHTTPRequestsCounter.Inc()
 
 			// Create a response writer that captures the status code
 			rw := &responseWriter{ResponseWriter: w, statusCode: 200}
@@ -229,8 +230,8 @@ func (m *Metrics) HTTPMiddleware() func(http.Handler) http.Handler {
 
 			// Record metrics
 			duration := time.Since(start)
-			m.HttpDurationHistogram.Observe(duration.Seconds())
-			m.IncrementHttpResponseCounter(rw.statusCode)
+			m.HTTPDurationHistogram.Observe(duration.Seconds())
+			m.IncrementHTTPResponseCounter(rw.statusCode)
 		})
 	}
 }

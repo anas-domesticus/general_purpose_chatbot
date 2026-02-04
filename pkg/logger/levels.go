@@ -1,3 +1,4 @@
+// Package logger provides structured logging utilities.
 package logger
 
 // Level represents log levels

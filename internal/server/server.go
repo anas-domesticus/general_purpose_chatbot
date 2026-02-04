@@ -1,3 +1,4 @@
+// Package server provides the main server implementation for the chatbot.
 package server
 
 import (
@@ -27,9 +28,9 @@ import (
 	"github.com/lewisedginton/general_purpose_chatbot/internal/session_manager"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"google.golang.org/adk/model"
+	"google.golang.org/adk/model/gemini"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
-	"google.golang.org/adk/model/gemini"
 )
 
 // Connector defines the interface for platform connectors

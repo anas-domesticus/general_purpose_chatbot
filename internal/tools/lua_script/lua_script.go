@@ -1,3 +1,4 @@
+// Package lua_script provides Lua script execution tools for the chatbot.
 package lua_script
 
 import (

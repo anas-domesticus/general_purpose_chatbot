@@ -1,3 +1,4 @@
+// Package httpmiddleware provides HTTP middleware components.
 package httpmiddleware
 
 import (

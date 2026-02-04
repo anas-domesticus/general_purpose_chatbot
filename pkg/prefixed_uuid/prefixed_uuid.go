@@ -1,3 +1,4 @@
+// Package prefixed_uuid provides UUID generation with customisable prefixes.
 package prefixed_uuid
 
 import (

@@ -21,8 +21,8 @@ func TestNewServer(t *testing.T) {
 			t.Errorf("Expected default gRPC port 8000, got %d", server.GrpcListenPort)
 		}
 
-		if server.HttpListenPort != 8080 {
-			t.Errorf("Expected default HTTP port 8080, got %d", server.HttpListenPort)
+		if server.HTTPListenPort != 8080 {
+			t.Errorf("Expected default HTTP port 8080, got %d", server.HTTPListenPort)
 		}
 
 		if server.Log != log {
@@ -46,8 +46,8 @@ func TestNewServer(t *testing.T) {
 			t.Errorf("Expected gRPC port 9000, got %d", server.GrpcListenPort)
 		}
 
-		if server.HttpListenPort != 8080 {
-			t.Errorf("Expected default HTTP port 8080, got %d", server.HttpListenPort)
+		if server.HTTPListenPort != 8080 {
+			t.Errorf("Expected default HTTP port 8080, got %d", server.HTTPListenPort)
 		}
 	})
 
@@ -59,7 +59,7 @@ func TestNewServer(t *testing.T) {
 		})
 
 		config := &ServerConfig{
-			HttpListenPort: 9001,
+			HTTPListenPort: 9001,
 		}
 		server := NewServer(log, config)
 
@@ -67,8 +67,8 @@ func TestNewServer(t *testing.T) {
 			t.Errorf("Expected default gRPC port 8000, got %d", server.GrpcListenPort)
 		}
 
-		if server.HttpListenPort != 9001 {
-			t.Errorf("Expected HTTP port 9001, got %d", server.HttpListenPort)
+		if server.HTTPListenPort != 9001 {
+			t.Errorf("Expected HTTP port 9001, got %d", server.HTTPListenPort)
 		}
 	})
 
@@ -86,7 +86,7 @@ func TestNewServer(t *testing.T) {
 		server := NewServer(log, config)
 
 		// Basic check that metrics is set (detailed testing would require more setup)
-		if server.Metrics.TotalHttpRequestsCounter == nil {
+		if server.Metrics.TotalHTTPRequestsCounter == nil {
 			t.Error("Metrics was not set correctly")
 		}
 	})
@@ -101,7 +101,7 @@ func TestNewServer(t *testing.T) {
 		m := metrics.NewMetrics(false, true, false, log)
 		config := &ServerConfig{
 			GrpcListenPort: 9000,
-			HttpListenPort: 9001,
+			HTTPListenPort: 9001,
 			Metrics:        m,
 		}
 		server := NewServer(log, config)
@@ -110,8 +110,8 @@ func TestNewServer(t *testing.T) {
 			t.Errorf("Expected gRPC port 9000, got %d", server.GrpcListenPort)
 		}
 
-		if server.HttpListenPort != 9001 {
-			t.Errorf("Expected HTTP port 9001, got %d", server.HttpListenPort)
+		if server.HTTPListenPort != 9001 {
+			t.Errorf("Expected HTTP port 9001, got %d", server.HTTPListenPort)
 		}
 
 		if server.Metrics.TotalGrpcRequestsCounter == nil {
@@ -128,7 +128,7 @@ func TestNewServer(t *testing.T) {
 
 		config := &ServerConfig{
 			GrpcListenPort: 0, // Should be ignored
-			HttpListenPort: 9001,
+			HTTPListenPort: 9001,
 		}
 		server := NewServer(log, config)
 
@@ -136,8 +136,8 @@ func TestNewServer(t *testing.T) {
 			t.Errorf("Expected default gRPC port 8000, got %d", server.GrpcListenPort)
 		}
 
-		if server.HttpListenPort != 9001 {
-			t.Errorf("Expected HTTP port 9001, got %d", server.HttpListenPort)
+		if server.HTTPListenPort != 9001 {
+			t.Errorf("Expected HTTP port 9001, got %d", server.HTTPListenPort)
 		}
 	})
 }
@@ -153,7 +153,7 @@ func TestServerConfig(t *testing.T) {
 		m := metrics.NewMetrics(true, true, false, log)
 		config := &ServerConfig{
 			GrpcListenPort: 12345,
-			HttpListenPort: 54321,
+			HTTPListenPort: 54321,
 			Metrics:        m,
 		}
 
@@ -161,11 +161,11 @@ func TestServerConfig(t *testing.T) {
 			t.Errorf("Expected gRPC port 12345, got %d", config.GrpcListenPort)
 		}
 
-		if config.HttpListenPort != 54321 {
-			t.Errorf("Expected HTTP port 54321, got %d", config.HttpListenPort)
+		if config.HTTPListenPort != 54321 {
+			t.Errorf("Expected HTTP port 54321, got %d", config.HTTPListenPort)
 		}
 
-		if config.Metrics.TotalHttpRequestsCounter == nil {
+		if config.Metrics.TotalHTTPRequestsCounter == nil {
 			t.Error("HTTP metrics was not set correctly")
 		}
 

@@ -1,3 +1,4 @@
+// Package monitoring provides health monitoring and observability.
 package monitoring
 
 import (

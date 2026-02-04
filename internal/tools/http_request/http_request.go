@@ -1,3 +1,4 @@
+// Package http_request provides HTTP request tools for the chatbot.
 package http_request
 
 import (

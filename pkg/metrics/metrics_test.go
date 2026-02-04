@@ -73,8 +73,8 @@ app_total_http_requests 0
 	port := getRandomHighPort()
 	m.Listen(port)
 	for i := 0; i < 5; i++ {
-		m.IncrementHttpResponseCounter(200)
-		m.IncrementHttpResponseCounter(404)
+		m.IncrementHTTPResponseCounter(200)
+		m.IncrementHTTPResponseCounter(404)
 	}
 	for i := 0; i < 5; i++ {
 		m.IncrementGrpcResponseCounter(codes.OK)

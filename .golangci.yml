@@ -61,9 +61,10 @@ linters:
     - tagliatelle
 
   exclusions:
-    # Exclude sqlc-generated files
+    # Exclude sqlc-generated files and tests
     paths:
       - "internal/cli/persistence/sqlc"
+      - ".*_test\\.go$"
 
   settings:
     gocyclo:

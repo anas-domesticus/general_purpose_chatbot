@@ -7,8 +7,8 @@ import (
 	"github.com/hashicorp/go-multierror"
 )
 
-// HttpServerConfig holds HTTP server settings
-type HttpServerConfig struct {
+// HTTPServerConfig holds HTTP server settings
+type HTTPServerConfig struct {
 	// Port is the TCP port for the HTTP server to listen on
 	Port int `env:"HTTP_PORT" yaml:"http_port" default:"8080"`
 
@@ -25,8 +25,8 @@ type HttpServerConfig struct {
 	MaxHeaderBytes int `env:"HTTP_MAX_HEADER_BYTES" yaml:"max_header_bytes" default:"1048576"`
 }
 
-// Validate checks HttpServerConfig for valid port range
-func (h HttpServerConfig) Validate() error {
+// Validate checks HTTPServerConfig for valid port range
+func (h HTTPServerConfig) Validate() error {
 	var result error
 	if h.Port < 1 || h.Port > 65535 {
 		result = multierror.Append(result, fmt.Errorf("http port must be between 1-65535, got %d", h.Port))
@@ -35,16 +35,16 @@ func (h HttpServerConfig) Validate() error {
 }
 
 // ReadTimeout returns the ReadTimeoutSeconds as a time.Duration
-func (h HttpServerConfig) ReadTimeout() time.Duration {
+func (h HTTPServerConfig) ReadTimeout() time.Duration {
 	return time.Duration(h.ReadTimeoutSeconds) * time.Second
 }
 
 // WriteTimeout returns the WriteTimeoutSeconds as a time.Duration
-func (h HttpServerConfig) WriteTimeout() time.Duration {
+func (h HTTPServerConfig) WriteTimeout() time.Duration {
 	return time.Duration(h.WriteTimeoutSeconds) * time.Second
 }
 
 // IdleTimeout returns the IdleTimeoutSeconds as a time.Duration
-func (h HttpServerConfig) IdleTimeout() time.Duration {
+func (h HTTPServerConfig) IdleTimeout() time.Duration {
 	return time.Duration(h.IdleTimeoutSeconds) * time.Second
 }
