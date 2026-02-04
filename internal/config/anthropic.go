@@ -4,7 +4,7 @@ import "time"
 
 // AnthropicConfig holds Anthropic-specific configuration
 type AnthropicConfig struct {
-	APIKey         string        `env:"ANTHROPIC_API_KEY" yaml:"api_key"`
+	APIKey         string        `env:"ANTHROPIC_API_KEY" yaml:"-"`
 	Model          string        `env:"CLAUDE_MODEL" yaml:"model" default:"claude-sonnet-4-5-20250929"`
 	APIBaseURL     string        `env:"ANTHROPIC_API_URL" yaml:"api_base_url" default:"https://api.anthropic.com"`
 	MaxRetries     int           `env:"ANTHROPIC_MAX_RETRIES" yaml:"max_retries" default:"3"`

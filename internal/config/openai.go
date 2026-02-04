@@ -4,7 +4,7 @@ import "time"
 
 // OpenAIConfig holds OpenAI-specific configuration
 type OpenAIConfig struct {
-	APIKey     string        `env:"OPENAI_API_KEY" yaml:"api_key"`
+	APIKey     string        `env:"OPENAI_API_KEY" yaml:"-"`
 	Model      string        `env:"OPENAI_MODEL" yaml:"model" default:"gpt-4"`
 	APIBaseURL string        `env:"OPENAI_API_URL" yaml:"api_base_url" default:"https://api.openai.com/v1"`
 	MaxRetries int           `env:"OPENAI_MAX_RETRIES" yaml:"max_retries" default:"3"`

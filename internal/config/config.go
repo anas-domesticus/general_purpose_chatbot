@@ -23,16 +23,16 @@ type AppConfig struct {
 	IdleTimeout    time.Duration `env:"IDLE_TIMEOUT" yaml:"idle_timeout" default:"60s"`
 
 	// LLM Provider configuration
-	LLM LLMConfig `yaml:"llm,inline"`
+	LLM LLMConfig `yaml:"llm"`
 
 	// Anthropic/Claude configuration
-	Anthropic AnthropicConfig `yaml:"anthropic,inline"`
+	Anthropic AnthropicConfig `yaml:"anthropic"`
 
 	// Gemini configuration
-	Gemini GeminiConfig `yaml:"gemini,inline"`
+	Gemini GeminiConfig `yaml:"gemini"`
 
 	// OpenAI configuration
-	OpenAI OpenAIConfig `yaml:"openai,inline"`
+	OpenAI OpenAIConfig `yaml:"openai"`
 
 	// Logging configuration
 	Logging LoggingConfig `yaml:"logging,inline"`

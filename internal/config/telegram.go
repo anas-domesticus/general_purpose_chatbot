@@ -2,7 +2,7 @@ package config
 
 // TelegramConfig holds Telegram-specific configuration
 type TelegramConfig struct {
-	BotToken string `env:"TELEGRAM_BOT_TOKEN" yaml:"bot_token"`
+	BotToken string `env:"TELEGRAM_BOT_TOKEN" yaml:"-"`
 	Debug    bool   `env:"TELEGRAM_DEBUG" yaml:"debug"`
 }
 
