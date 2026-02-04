@@ -193,9 +193,10 @@ mcp:
 ```
 
 **Transport Support:**
-- `stdio` - Fully supported (executes command as subprocess)
-- `websocket` - Not yet implemented
-- `sse` - Not yet implemented
+- `stdio` - Executes command as subprocess
+- `http` - HTTP transport (2025-03-26 MCP spec)
+- `sse` - Server-Sent Events transport (2024-11-05 MCP spec)
+- `websocket` - WebSocket transport with authentication support
 
 **Authentication Types:**
 - `bearer` - Bearer token authentication
