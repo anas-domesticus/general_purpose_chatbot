@@ -3,7 +3,7 @@ package session_manager
 import (
 	"time"
 
-	intsession "github.com/lewisedginton/general_purpose_chatbot/internal/session"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/storage_manager"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
 
@@ -19,8 +19,8 @@ type SessionInfo struct {
 
 // Config holds configuration for the session manager
 type Config struct {
-	MetadataFile string                  // Path to metadata JSON file
-	FileProvider intsession.FileProvider // Reuse from JSONSessionService
+	MetadataFile string                       // Path to metadata JSON file (relative to FileProvider root)
+	FileProvider storage_manager.FileProvider // File provider for persistence (used for both metadata and session data)
 	Logger       logger.Logger
 }
 

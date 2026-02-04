@@ -1,4 +1,4 @@
-package session
+package storage_manager
 
 import (
 	"bytes"
@@ -6,26 +6,34 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
-// AWSS3Client implements the S3Client interface using AWS SDK v2
+// S3Client defines the S3 operations needed by S3FileProvider.
+type S3Client interface {
+	GetObject(ctx context.Context, bucket, key string) ([]byte, error)
+	PutObject(ctx context.Context, bucket, key string, data []byte) error
+	HeadObject(ctx context.Context, bucket, key string) error
+	DeleteObject(ctx context.Context, bucket, key string) error
+	ListObjects(ctx context.Context, bucket, prefix string) ([]string, error)
+}
+
+// AWSS3Client implements the S3Client interface using AWS SDK v2.
 type AWSS3Client struct {
 	s3Client *s3.Client
 }
 
-// NewAWSS3Client creates a new AWS S3 client
+// NewAWSS3Client creates a new AWS S3 client.
 func NewAWSS3Client(s3Client *s3.Client) *AWSS3Client {
 	return &AWSS3Client{
 		s3Client: s3Client,
 	}
 }
 
-// GetObject retrieves an object from S3
+// GetObject retrieves an object from S3.
 func (c *AWSS3Client) GetObject(ctx context.Context, bucket, key string) ([]byte, error) {
 	input := &s3.GetObjectInput{
 		Bucket: aws.String(bucket),
@@ -46,7 +54,7 @@ func (c *AWSS3Client) GetObject(ctx context.Context, bucket, key string) ([]byte
 	return data, nil
 }
 
-// PutObject uploads an object to S3
+// PutObject uploads an object to S3.
 func (c *AWSS3Client) PutObject(ctx context.Context, bucket, key string, data []byte) error {
 	input := &s3.PutObjectInput{
 		Bucket: aws.String(bucket),
@@ -62,7 +70,7 @@ func (c *AWSS3Client) PutObject(ctx context.Context, bucket, key string, data []
 	return nil
 }
 
-// HeadObject checks if an object exists in S3
+// HeadObject checks if an object exists in S3.
 func (c *AWSS3Client) HeadObject(ctx context.Context, bucket, key string) error {
 	input := &s3.HeadObjectInput{
 		Bucket: aws.String(bucket),
@@ -81,7 +89,7 @@ func (c *AWSS3Client) HeadObject(ctx context.Context, bucket, key string) error 
 	return nil
 }
 
-// DeleteObject removes an object from S3
+// DeleteObject removes an object from S3.
 func (c *AWSS3Client) DeleteObject(ctx context.Context, bucket, key string) error {
 	input := &s3.DeleteObjectInput{
 		Bucket: aws.String(bucket),
@@ -96,7 +104,7 @@ func (c *AWSS3Client) DeleteObject(ctx context.Context, bucket, key string) erro
 	return nil
 }
 
-// ListObjects lists objects with a given prefix in S3
+// ListObjects lists objects with a given prefix in S3.
 func (c *AWSS3Client) ListObjects(ctx context.Context, bucket, prefix string) ([]string, error) {
 	input := &s3.ListObjectsV2Input{
 		Bucket: aws.String(bucket),
@@ -122,65 +130,3 @@ func (c *AWSS3Client) ListObjects(ctx context.Context, bucket, prefix string) ([
 	return keys, nil
 }
 
-// MockS3Client provides a mock implementation for testing
-type MockS3Client struct {
-	storage map[string][]byte
-}
-
-// NewMockS3Client creates a new mock S3 client for testing
-func NewMockS3Client() *MockS3Client {
-	return &MockS3Client{
-		storage: make(map[string][]byte),
-	}
-}
-
-// GetObject retrieves an object from mock storage
-func (m *MockS3Client) GetObject(ctx context.Context, bucket, key string) ([]byte, error) {
-	fullKey := fmt.Sprintf("%s/%s", bucket, key)
-	data, exists := m.storage[fullKey]
-	if !exists {
-		return nil, fmt.Errorf("object not found")
-	}
-	return data, nil
-}
-
-// PutObject stores an object in mock storage
-func (m *MockS3Client) PutObject(ctx context.Context, bucket, key string, data []byte) error {
-	fullKey := fmt.Sprintf("%s/%s", bucket, key)
-	m.storage[fullKey] = make([]byte, len(data))
-	copy(m.storage[fullKey], data)
-	return nil
-}
-
-// HeadObject checks if an object exists in mock storage
-func (m *MockS3Client) HeadObject(ctx context.Context, bucket, key string) error {
-	fullKey := fmt.Sprintf("%s/%s", bucket, key)
-	_, exists := m.storage[fullKey]
-	if !exists {
-		return fmt.Errorf("object not found")
-	}
-	return nil
-}
-
-// DeleteObject removes an object from mock storage
-func (m *MockS3Client) DeleteObject(ctx context.Context, bucket, key string) error {
-	fullKey := fmt.Sprintf("%s/%s", bucket, key)
-	delete(m.storage, fullKey)
-	return nil
-}
-
-// ListObjects lists objects with a given prefix in mock storage
-func (m *MockS3Client) ListObjects(ctx context.Context, bucket, prefix string) ([]string, error) {
-	searchPrefix := fmt.Sprintf("%s/%s", bucket, prefix)
-	var keys []string
-
-	for fullKey := range m.storage {
-		if strings.HasPrefix(fullKey, searchPrefix) {
-			// Remove bucket prefix to return just the key
-			key := strings.TrimPrefix(fullKey, bucket+"/")
-			keys = append(keys, key)
-		}
-	}
-
-	return keys, nil
-}

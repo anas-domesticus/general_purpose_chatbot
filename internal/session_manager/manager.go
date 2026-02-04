@@ -10,6 +10,7 @@ import (
 
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/prefixed_uuid"
+	"google.golang.org/adk/session"
 )
 
 // Manager provides session tracking and lifecycle management
@@ -29,14 +30,18 @@ type Manager interface {
 
 	// ListUserSessions returns all sessions for a user+connector
 	ListUserSessions(ctx context.Context, connector, userID string) ([]SessionInfo, error)
+
+	// GetADKSessionService returns the ADK-compatible session.Service for conversation data
+	GetADKSessionService() session.Service
 }
 
 // sessionManager implements the Manager interface
 type sessionManager struct {
-	config    Config
-	mutex     sync.RWMutex
-	index     map[string]map[string][]SessionInfo // connector -> userID -> []sessions
-	fileMutex sync.Mutex
+	config         Config
+	mutex          sync.RWMutex
+	index          map[string]map[string][]SessionInfo // connector -> userID -> []sessions
+	fileMutex      sync.Mutex
+	sessionService *SessionService // ADK-compatible session service
 }
 
 // New creates a new session manager instance
@@ -52,8 +57,9 @@ func New(config Config) (Manager, error) {
 	}
 
 	sm := &sessionManager{
-		config: config,
-		index:  make(map[string]map[string][]SessionInfo),
+		config:         config,
+		index:          make(map[string]map[string][]SessionInfo),
+		sessionService: NewSessionService(config.FileProvider, config.Logger),
 	}
 
 	// Load existing metadata
@@ -62,6 +68,11 @@ func New(config Config) (Manager, error) {
 	}
 
 	return sm, nil
+}
+
+// GetADKSessionService returns the ADK-compatible session.Service for conversation data
+func (sm *sessionManager) GetADKSessionService() session.Service {
+	return sm.sessionService
 }
 
 // GetLatestSession returns the most recent session ID for a user+connector
