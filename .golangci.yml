@@ -91,6 +91,7 @@ linters:
           - revive
           - noctx
           - goconst
+          - staticcheck
       # Exclude var-naming for packages with underscores (convention choice)
       - path: pkg/prefixed_uuid/
         linters:

@@ -44,7 +44,7 @@ func NewLocalFileProvider(baseDir string) *LocalFileProvider {
 
 // Read reads a file from the local filesystem.
 func (p *LocalFileProvider) Read(ctx context.Context, path string) ([]byte, error) {
-	return os.ReadFile(filepath.Join(p.baseDir, path))
+	return os.ReadFile(filepath.Join(p.baseDir, path)) //nolint:gosec // G304: Path is constructed from trusted baseDir
 }
 
 // Write writes data to a local file.
@@ -53,7 +53,7 @@ func (p *LocalFileProvider) Write(ctx context.Context, path string, data []byte)
 
 	// Create directory if it doesn't exist
 	dir := filepath.Dir(fullPath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
 

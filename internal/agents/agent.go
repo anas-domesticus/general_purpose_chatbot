@@ -199,7 +199,7 @@ func createMCPToolsets(mcpConfig config.MCPConfig, log logger.Logger) []tool.Too
 func createStdioTransport(serverConfig config.MCPServerConfig) mcp.Transport {
 	// Build the command
 	args := append([]string{}, serverConfig.Args...)
-	cmd := exec.Command(serverConfig.Command, args...) //nolint:gosec // Command comes from trusted config
+	cmd := exec.Command(serverConfig.Command, args...) //nolint:gosec,noctx // Command comes from trusted config; CommandTransport manages lifecycle
 
 	// Add environment variables if specified
 	if len(serverConfig.Environment) > 0 {

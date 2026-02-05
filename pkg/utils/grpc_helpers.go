@@ -29,7 +29,7 @@ import (
 //		}
 //	}()
 func Listen(s *grpc.Server, listenPort int, log logger.Logger) (chan error, func(), func(), error) {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", listenPort))
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", listenPort)) //nolint:noctx // gRPC server manages listener lifecycle
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to listen on port %d: %w", listenPort, err)
 	}

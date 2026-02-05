@@ -248,7 +248,7 @@ func GetConfig[T any](dest *T, filepath string, allowFileErrors bool) error {
 	if filepath == "" {
 		return GetConfigFromEnvVars(dest)
 	}
-	data, err := os.ReadFile(filepath)
+	data, err := os.ReadFile(filepath) //nolint:gosec // G304: Config file path is provided by caller
 	if err != nil {
 		if allowFileErrors {
 			return GetConfigFromEnvVars(dest)
