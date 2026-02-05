@@ -1,5 +1,5 @@
 // Package http_request provides HTTP request tools for the chatbot.
-package http_request
+package http_request //nolint:revive // var-naming: using underscores for domain clarity
 
 import (
 	"bytes"

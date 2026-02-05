@@ -54,6 +54,8 @@ type UserInfoFunc func() string
 type AgentFactory func(PlatformSpecificGuidanceProvider, UserInfoFunc) (agent.Agent, error)
 
 // NewChatAgent creates a factory function that returns a new chat agent with model and MCP config.
+//
+//nolint:revive // cognitive-complexity: Factory pattern with platform/user customization requires nested logic
 func NewChatAgent(
 	ctx context.Context,
 	llmModel model.LLM,

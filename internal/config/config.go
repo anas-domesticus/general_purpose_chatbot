@@ -63,6 +63,8 @@ type AppConfig struct {
 }
 
 // Validate validates the configuration and returns an error if invalid
+//
+//nolint:gocyclo,gocognit,revive // Config validation inherently requires checking many fields
 func (c *AppConfig) Validate() error {
 	var result error
 

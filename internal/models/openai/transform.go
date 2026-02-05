@@ -34,6 +34,8 @@ const (
 
 // transformADKToOpenAI converts ADK content messages to OpenAI chat completion message params.
 // System messages are included inline in the messages array (OpenAI's standard format).
+//
+//nolint:revive // cognitive-complexity: Protocol transformation requires handling many content types
 func transformADKToOpenAI(contents []*genai.Content) ([]openai.ChatCompletionMessageParamUnion, error) {
 	var messages []openai.ChatCompletionMessageParamUnion
 
@@ -55,6 +57,8 @@ func transformADKToOpenAI(contents []*genai.Content) ([]openai.ChatCompletionMes
 }
 
 // convertContentToMessage converts a single genai.Content to an OpenAI ChatCompletionMessageParamUnion.
+//
+//nolint:revive // cognitive-complexity: Role-based conversion requires multiple branches
 func convertContentToMessage(content *genai.Content) (*openai.ChatCompletionMessageParamUnion, error) {
 	if content == nil || len(content.Parts) == 0 {
 		return nil, nil

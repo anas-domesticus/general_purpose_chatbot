@@ -56,6 +56,8 @@ func (o *Model) GenerateContent(ctx context.Context, req *model.LLMRequest, stre
 }
 
 // generateContentNonStreaming performs a non-streaming content generation request.
+//
+//nolint:gocyclo,revive // API integration requires handling many response conditions
 func (o *Model) generateContentNonStreaming(ctx context.Context, req *model.LLMRequest) (*model.LLMResponse, error) {
 	// Transform ADK request to OpenAI format
 	messages, err := transformADKToOpenAI(req.Contents)

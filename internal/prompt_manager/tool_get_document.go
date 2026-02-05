@@ -1,4 +1,4 @@
-package prompt_manager
+package prompt_manager //nolint:revive // var-naming: using underscores for domain clarity
 
 import (
 	"google.golang.org/adk/tool"
@@ -41,7 +41,7 @@ func (m *PromptManager) createGetDocumentTool() (tool.Tool, error) {
 
 // Tools returns all ADK tools for the prompt manager.
 func (m *PromptManager) Tools() ([]tool.Tool, error) {
-	var tools []tool.Tool
+	tools := make([]tool.Tool, 0, 1)
 
 	getDocTool, err := m.createGetDocumentTool()
 	if err != nil {

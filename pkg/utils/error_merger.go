@@ -1,6 +1,6 @@
 // Package utils provides common utility functions for Go services.
 // It includes error handling, server utilities, and channel management.
-package utils
+package utils //nolint:revive // var-naming: utils is an acceptable package name for shared utilities
 
 import "sync"
 

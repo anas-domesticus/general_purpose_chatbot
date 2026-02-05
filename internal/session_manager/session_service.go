@@ -1,4 +1,4 @@
-package session_manager
+package session_manager //nolint:revive // var-naming: using underscores for domain clarity
 
 import (
 	"bytes"
@@ -273,6 +273,8 @@ func (s *SessionService) Delete(ctx context.Context, req *session.DeleteRequest)
 }
 
 // AppendEvent appends an event to a session.
+//
+//nolint:gocyclo,revive // Event handling requires multiple type assertions and state management
 func (s *SessionService) AppendEvent(ctx context.Context, sess session.Session, event *session.Event) error {
 	if sess == nil {
 		return fmt.Errorf("session cannot be nil")

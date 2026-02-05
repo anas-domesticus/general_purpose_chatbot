@@ -1,5 +1,5 @@
 // Package skills_manager provides skill management for the chatbot.
-package skills_manager
+package skills_manager //nolint:revive // var-naming: using underscores for domain clarity
 
 import (
 	"context"

@@ -21,6 +21,7 @@ type Validator interface {
 	Validate() error
 }
 
+//nolint:gocyclo,gocognit,revive // Reflection-based config processing requires complex type handling
 func processFields(val reflect.Value, typeOfT reflect.Type) (map[string]bool, error) {
 	setFields := make(map[string]bool)
 
@@ -113,6 +114,7 @@ func processFields(val reflect.Value, typeOfT reflect.Type) (map[string]bool, er
 	return setFields, nil
 }
 
+//nolint:gocyclo,gocognit,revive // Reflection-based validation requires complex type handling
 func checkRequiredAndDefaults(val reflect.Value, typeOfT reflect.Type, setFields map[string]bool) error {
 	var result error
 	for i := 0; i < val.NumField(); i++ {

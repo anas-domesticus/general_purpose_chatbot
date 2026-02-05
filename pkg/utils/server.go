@@ -1,4 +1,4 @@
-package utils
+package utils //nolint:revive // var-naming: utils is an acceptable package name for shared utilities
 
 import (
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"

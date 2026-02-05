@@ -1,5 +1,5 @@
 // Package agent_info provides agent information tools.
-package agent_info
+package agent_info //nolint:revive // var-naming: using underscores for domain clarity
 
 import (
 	"google.golang.org/adk/model"

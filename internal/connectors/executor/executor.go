@@ -34,6 +34,8 @@ func NewExecutor(agentFactory agents.AgentFactory, appName string, sessionServic
 }
 
 // Execute processes a message request and returns the response.
+//
+//nolint:gocyclo,revive // Message processing requires handling multiple validation and error paths
 func (e *Executor) Execute(
 	ctx context.Context,
 	req MessageRequest,

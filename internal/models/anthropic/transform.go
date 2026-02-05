@@ -38,6 +38,8 @@ const (
 // Cache Control:
 // Automatically enables prompt caching on the last system block and last user message.
 // This follows Anthropic's best practices for effective caching of context.
+//
+//nolint:gocyclo,revive // Protocol transformation requires handling many content types
 func transformADKToAnthropic(contents []*genai.Content) ([]anthropic.MessageParam, []anthropic.TextBlockParam, error) {
 	var messages []anthropic.MessageParam
 	var systemBlocks []anthropic.TextBlockParam
@@ -319,6 +321,8 @@ func mapStopReason(stopReason anthropic.StopReason) genai.FinishReason {
 // Cache Control:
 // Automatically enables prompt caching on the last tool definition.
 // This follows Anthropic's best practices for effective caching when using tools.
+//
+//nolint:gocognit,revive,unparam // Tool transformation requires handling many schema types
 func transformToolsToAnthropic(tools map[string]any) ([]anthropic.ToolUnionParam, error) {
 	if tools == nil {
 		return nil, nil

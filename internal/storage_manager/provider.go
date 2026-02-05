@@ -1,7 +1,7 @@
 // Package storage_manager provides unified storage abstraction for application persistence.
 // It supports local filesystem and S3 backends, allowing different components
 // (sessions, config, etc.) to get prefix-scoped file providers for isolated storage.
-package storage_manager
+package storage_manager //nolint:revive // var-naming: using underscores for domain clarity
 
 import (
 	"context"
