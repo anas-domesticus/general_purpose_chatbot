@@ -5,7 +5,7 @@ import (
 	"unicode"
 )
 
-// extractWords extracts and normalizes words from text for indexing.
+// extractWords extracts and normalises words from text for indexing.
 // Words are converted to lowercase and split on whitespace and punctuation.
 func extractWords(text string) map[string]struct{} {
 	result := make(map[string]struct{})

@@ -223,10 +223,10 @@ type mockSession struct {
 	events    []*session.Event
 }
 
-func (m *mockSession) AppName() string        { return m.appName }
-func (m *mockSession) UserID() string         { return m.userID }
-func (m *mockSession) ID() string             { return m.sessionID }
-func (m *mockSession) State() session.State   { return nil }
+func (m *mockSession) AppName() string           { return m.appName }
+func (m *mockSession) UserID() string            { return m.userID }
+func (m *mockSession) ID() string                { return m.sessionID }
+func (m *mockSession) State() session.State      { return nil }
 func (m *mockSession) LastUpdateTime() time.Time { return time.Now() }
 
 func (m *mockSession) Events() session.Events {

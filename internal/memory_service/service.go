@@ -16,7 +16,6 @@ import (
 // Service implements the ADK memory.Service interface with persistent storage.
 type Service struct {
 	fileProvider storage_manager.FileProvider
-	mutex        sync.RWMutex
 	userLocks    map[string]*sync.Mutex // Per-user locks
 	userLockMux  sync.Mutex
 	log          logger.Logger
@@ -147,7 +146,7 @@ func (s *Service) Search(ctx context.Context, req *memory.SearchRequest) (*memor
 
 // extractEntries extracts memory entries from session events.
 func (s *Service) extractEntries(sess session.Session) []MemoryEntry {
-	var entries []MemoryEntry
+	entries := make([]MemoryEntry, 0, sess.Events().Len())
 
 	for event := range sess.Events().All() {
 		// Only process LLM responses with content
@@ -259,7 +258,11 @@ func (s *Service) findMatchingSessions(index *WordIndex, queryWords map[string]s
 }
 
 // loadSessionMemories loads and filters memory entries from a session.
-func (s *Service) loadSessionMemories(ctx context.Context, appName, userID, sessionID string, queryWords map[string]struct{}) ([]memory.Entry, error) {
+func (s *Service) loadSessionMemories(
+	ctx context.Context,
+	appName, userID, sessionID string,
+	queryWords map[string]struct{},
+) ([]memory.Entry, error) {
 	memPath := s.memoryPath(appName, userID, sessionID)
 
 	data, err := s.fileProvider.Read(ctx, memPath)
