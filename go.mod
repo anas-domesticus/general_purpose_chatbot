@@ -26,7 +26,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/unrolled/secure v1.17.0
 	github.com/yuin/gopher-lua v1.1.1
-	google.golang.org/adk v0.3.0
+	google.golang.org/adk v0.4.0
 	google.golang.org/genai v1.43.0
 	google.golang.org/grpc v1.76.0
 	gopkg.in/yaml.v3 v3.0.1
