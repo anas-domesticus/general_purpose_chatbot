@@ -10,6 +10,12 @@ output:
       path: stdout
       print-linter-name: true
 
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+
 linters:
   default: none
   enable:
@@ -19,11 +25,6 @@ linters:
     - ineffassign
     - staticcheck
     - unused
-
-    # Formatting linters
-    - gofmt
-    - gofumpt
-    - goimports
 
     # Additional quality linters
     - gocyclo
