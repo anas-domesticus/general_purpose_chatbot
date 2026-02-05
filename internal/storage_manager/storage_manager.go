@@ -14,11 +14,13 @@ const (
 	BackendLocal BackendType = "local"
 	// BackendS3 uses AWS S3 for storage.
 	BackendS3 BackendType = "s3"
+	// BackendGit uses a git repository for storage.
+	BackendGit BackendType = "git"
 )
 
 // Config holds the configuration for the StorageManager.
 type Config struct {
-	// Backend specifies the storage backend type (local or s3).
+	// Backend specifies the storage backend type (local, s3, or git).
 	Backend BackendType
 
 	// LocalConfig holds configuration for local filesystem storage.
@@ -26,6 +28,9 @@ type Config struct {
 
 	// S3Config holds configuration for S3 storage.
 	S3Config *S3Config
+
+	// GitConfig holds configuration for git repository storage.
+	GitConfig *GitConfig
 }
 
 // LocalConfig holds configuration for local filesystem storage.
@@ -42,6 +47,18 @@ type S3Config struct {
 	Prefix string
 	// Client is the AWS S3 client. If nil, a default client will be created.
 	Client *s3.Client
+}
+
+// GitConfig holds configuration for git repository storage.
+type GitConfig struct {
+	// Path is the path to the git repository.
+	Path string
+	// AuthorName is the name used for commits (defaults to "GitFileProvider").
+	AuthorName string
+	// AuthorEmail is the email used for commits (defaults to "gitfileprovider@localhost").
+	AuthorEmail string
+	// InitIfMissing initializes a new repo if the path doesn't contain one.
+	InitIfMissing bool
 }
 
 // StorageManager provides unified storage management for the application.
@@ -78,6 +95,24 @@ func New(config Config) (*StorageManager, error) {
 		}
 		s3Client := NewAWSS3Client(config.S3Config.Client)
 		provider = NewS3FileProvider(config.S3Config.Bucket, config.S3Config.Prefix, s3Client)
+
+	case BackendGit:
+		if config.GitConfig == nil {
+			return nil, fmt.Errorf("git config is required for git backend")
+		}
+		if config.GitConfig.Path == "" {
+			return nil, fmt.Errorf("path is required for git backend")
+		}
+		var err error
+		provider, err = NewGitFileProvider(GitProviderOptions{
+			Path:          config.GitConfig.Path,
+			AuthorName:    config.GitConfig.AuthorName,
+			AuthorEmail:   config.GitConfig.AuthorEmail,
+			InitIfMissing: config.GitConfig.InitIfMissing,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create git provider: %w", err)
+		}
 
 	default:
 		return nil, fmt.Errorf("unsupported backend type: %s", config.Backend)
