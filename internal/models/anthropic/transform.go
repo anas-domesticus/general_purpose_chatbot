@@ -5,11 +5,23 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 )
+
+// safeInt64ToInt32 safely converts int64 to int32 with bounds checking.
+func safeInt64ToInt32(v int64) int32 {
+	if v > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if v < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(v)
+}
 
 // Image MIME type constants
 const (
@@ -224,11 +236,13 @@ func transformAnthropicToADK(msg *anthropic.Message) (*model.LLMResponse, error)
 	// ADK maps these as:
 	// - CachedContentTokenCount: tokens read from cache
 	// - PromptTokenCount: total input tokens (includes cache creation + new input)
+	totalTokens := msg.Usage.InputTokens + msg.Usage.CacheCreationInputTokens +
+		msg.Usage.CacheReadInputTokens + msg.Usage.OutputTokens
 	usageMetadata := &genai.GenerateContentResponseUsageMetadata{
-		PromptTokenCount:        int32(msg.Usage.InputTokens + msg.Usage.CacheCreationInputTokens),
-		CachedContentTokenCount: int32(msg.Usage.CacheReadInputTokens),
-		CandidatesTokenCount:    int32(msg.Usage.OutputTokens),
-		TotalTokenCount:         int32(msg.Usage.InputTokens + msg.Usage.CacheCreationInputTokens + msg.Usage.CacheReadInputTokens + msg.Usage.OutputTokens),
+		PromptTokenCount:        safeInt64ToInt32(msg.Usage.InputTokens + msg.Usage.CacheCreationInputTokens),
+		CachedContentTokenCount: safeInt64ToInt32(msg.Usage.CacheReadInputTokens),
+		CandidatesTokenCount:    safeInt64ToInt32(msg.Usage.OutputTokens),
+		TotalTokenCount:         safeInt64ToInt32(totalTokens),
 	}
 
 	response := &model.LLMResponse{
@@ -316,7 +330,8 @@ func transformToolsToAnthropic(tools map[string]any) ([]anthropic.ToolUnionParam
 		Declaration() *genai.FunctionDeclaration
 	}
 
-	var anthropicTools []anthropic.ToolUnionParam
+	// Pre-allocate with estimated capacity
+	anthropicTools := make([]anthropic.ToolUnionParam, 0, len(tools))
 
 	for _, toolDef := range tools {
 		// Type assert to tool with declaration method

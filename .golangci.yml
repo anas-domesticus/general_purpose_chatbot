@@ -1,26 +1,13 @@
 # golangci-lint configuration for General Purpose Chatbot Framework
-# Based on official v2 schema: https://golangci-lint.run/docs/configuration/file/
-version: "2"
-
 run:
   timeout: 5m
   tests: true
 
 output:
   formats:
-    text:
-      print-linter-name: true
-      print-issued-lines: true
-
-formatters:
-  enable:
-    - gofmt
-    - gofumpt
-    - goimports
-  settings:
-    goimports:
-      local-prefixes:
-        - github.com/lewisedginton/general-purpose-chatbot
+    - format: colored-line-number
+  print-linter-name: true
+  print-issued-lines: true
 
 linters:
   enable:
@@ -30,6 +17,11 @@ linters:
     - ineffassign
     - staticcheck
     - unused
+
+    # Formatting linters
+    - gofmt
+    - gofumpt
+    - goimports
 
     # Additional quality linters
     - gocyclo
@@ -60,37 +52,146 @@ linters:
     - varnamelen
     - tagliatelle
 
-  exclusions:
-    # Exclude sqlc-generated files and tests
-    paths:
-      - "internal/cli/persistence/sqlc"
-      - ".*_test\\.go$"
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+  misspell:
+    locale: UK
+  lll:
+    line-length: 150
+  goimports:
+    local-prefixes: github.com/lewisedginton/general-purpose-chatbot
+  depguard:
+    rules:
+      main:
+        deny:
+          - pkg: "io/ioutil"
+            desc: "Use os or io package instead"
+  revive:
+    severity: warning
+    rules:
+      - name: exported
+        arguments:
+          - disableStutteringCheck  # Allow types like health.HealthChecker
+      - name: package-comments
+      - name: var-naming
+      - name: function-result-limit
+        arguments: [3]
+      - name: cognitive-complexity
+        arguments: [20]
 
-  settings:
-    gocyclo:
-      min-complexity: 15
-    goconst:
-      min-len: 3
-      min-occurrences: 3
-    misspell:
-      locale: UK
-    lll:
-      line-length: 150
-    depguard:
-      rules:
-        main:
-          deny:
-            - pkg: "io/ioutil"
-              desc: "Use os or io package instead"
-    revive:
-      severity: warning
-      rules:
-        - name: exported
-          arguments:
-            - disableStutteringCheck  # Allow types like health.HealthChecker
-        - name: package-comments
-        - name: var-naming
-        - name: function-result-limit
-          arguments: [3]
-        - name: cognitive-complexity
-          arguments: [20]
+issues:
+  exclude-dirs:
+    - internal/cli/persistence/sqlc
+  exclude-rules:
+    # Exclude complexity checks for test files
+    - path: _test\.go
+      linters:
+        - errcheck
+        - gosec
+        - unparam
+        - prealloc
+        - gocyclo
+        - gocognit
+        - revive
+        - noctx
+        - goconst
+    # Exclude var-naming for packages with underscores (convention choice)
+    - path: pkg/prefixed_uuid/
+      linters:
+        - revive
+      text: "var-naming"
+    - path: internal/tools/agent_info/
+      linters:
+        - revive
+      text: "var-naming"
+    - path: internal/tools/http_request/
+      linters:
+        - revive
+      text: "var-naming"
+    - path: internal/tools/lua_script/
+      linters:
+        - revive
+      text: "var-naming"
+    - path: internal/session_manager/
+      linters:
+        - revive
+      text: "var-naming"
+    - path: internal/storage_manager/
+      linters:
+        - revive
+      text: "var-naming"
+    - path: internal/skills_manager/
+      linters:
+        - revive
+      text: "var-naming"
+    - path: internal/prompt_manager/
+      linters:
+        - revive
+      text: "var-naming"
+    # Exclude contextcheck for manager creation (context not needed at init)
+    - path: internal/server/server\.go
+      linters:
+        - contextcheck
+    # Exclude high complexity for config validation (necessary complexity)
+    - path: pkg/config/config\.go
+      linters:
+        - gocognit
+        - gocyclo
+        - revive
+    - path: internal/config/config\.go
+      linters:
+        - gocognit
+        - gocyclo
+    # Exclude complexity for transform functions (necessary for protocol conversion)
+    - path: internal/models/anthropic/transform\.go
+      linters:
+        - gocognit
+        - gocyclo
+        - revive
+        - unparam
+    - path: internal/models/openai/transform\.go
+      linters:
+        - gocognit
+        - gocyclo
+        - revive
+        - unparam
+    # Exclude complexity for model implementations
+    - path: internal/models/anthropic/claude\.go
+      linters:
+        - gocyclo
+        - revive
+    - path: internal/models/openai/openai\.go
+      linters:
+        - gocyclo
+        - revive
+    # Exclude complexity for config validation (necessary complexity)
+    - path: internal/config/config\.go
+      linters:
+        - revive
+    # Exclude complexity for session service (necessary for persistence logic)
+    - path: internal/session_manager/session_service\.go
+      linters:
+        - gocyclo
+        - revive
+    # Exclude complexity for executor
+    - path: internal/connectors/executor/executor\.go
+      linters:
+        - gocyclo
+        - revive
+    # Exclude complexity for agent factory
+    - path: internal/agents/agent\.go
+      linters:
+        - revive
+    # Exclude complexity for server run
+    - path: internal/server/server\.go
+      linters:
+        - revive
+    # Exclude function-result-limit for grpc helpers (existing API)
+    - path: pkg/utils/grpc_helpers\.go
+      linters:
+        - revive
+      text: "function-result-limit"

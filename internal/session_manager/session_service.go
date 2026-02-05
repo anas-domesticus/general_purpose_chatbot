@@ -229,7 +229,8 @@ func (s *SessionService) List(ctx context.Context, req *session.ListRequest) (*s
 		return nil, fmt.Errorf("failed to list session files: %w", err)
 	}
 
-	var sessions []session.Session
+	// Pre-allocate with estimated capacity
+	sessions := make([]session.Session, 0, len(files))
 	for _, file := range files {
 		// Load session data
 		sessionData, err := s.loadSession(ctx, file)

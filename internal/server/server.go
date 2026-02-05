@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	_ "net/http/pprof"
+	_ "net/http/pprof" //nolint:gosec // G108: pprof is intentionally enabled for debugging
 	"os"
 	"os/signal"
 	"strings"
@@ -151,10 +151,15 @@ func (s *Server) Run() error {
 
 	s.setupGracefulShutdown()
 
-	// Start pprof server for profiling
+	// Start pprof server for profiling (localhost only for security)
 	go func() {
 		s.log.Info("Starting pprof server on :6060")
-		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+		pprofServer := &http.Server{
+			Addr:              "localhost:6060",
+			Handler:           nil, // Uses DefaultServeMux with pprof handlers
+			ReadHeaderTimeout: 10 * time.Second,
+		}
+		if err := pprofServer.ListenAndServe(); err != nil {
 			s.log.Error("pprof server failed", logger.ErrorField(err))
 		}
 	}()
@@ -259,8 +264,9 @@ func (s *Server) startHealthServer(ctx context.Context) error {
 	mux.HandleFunc(s.cfg.Health.CombinedPath, healthMonitor.HealthHandler())
 
 	server := &http.Server{
-		Addr:    fmt.Sprintf(":%d", s.cfg.Health.Port),
-		Handler: mux,
+		Addr:              fmt.Sprintf(":%d", s.cfg.Health.Port),
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	// Start server in background
@@ -295,8 +301,8 @@ func (s *Server) createStorageManager(ctx context.Context) (*storage_manager.Sto
 	case "local":
 		s.log.Info("Using local file-based storage", logger.StringField("directory", cfg.LocalDir))
 
-		// Ensure directory exists
-		if err := os.MkdirAll(cfg.LocalDir, 0755); err != nil {
+		// Ensure directory exists (0750 needed for directory traversal)
+		if err := os.MkdirAll(cfg.LocalDir, 0o750); err != nil {
 			return nil, fmt.Errorf("failed to create storage directory: %w", err)
 		}
 

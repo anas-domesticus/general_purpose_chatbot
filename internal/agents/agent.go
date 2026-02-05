@@ -50,8 +50,17 @@ type AgentConfig struct {
 // UserInfoFunc is a function that returns user information
 type UserInfoFunc func() string
 
-// NewChatAgent creates a factory function that returns a new chat agent with Claude model and MCP configuration
-func NewChatAgent(ctx context.Context, llmModel model.LLM, mcpConfig config.MCPConfig, agentConfig AgentConfig, tools []tool.Tool) (func(PlatformSpecificGuidanceProvider, UserInfoFunc) (agent.Agent, error), error) {
+// AgentFactory is a function that creates an agent with platform-specific guidance and user info.
+type AgentFactory func(PlatformSpecificGuidanceProvider, UserInfoFunc) (agent.Agent, error)
+
+// NewChatAgent creates a factory function that returns a new chat agent with model and MCP config.
+func NewChatAgent(
+	ctx context.Context,
+	llmModel model.LLM,
+	mcpConfig config.MCPConfig,
+	agentConfig AgentConfig,
+	tools []tool.Tool,
+) (AgentFactory, error) {
 	if agentConfig.Logger == nil {
 		return nil, fmt.Errorf("logger is required in AgentConfig")
 	}
@@ -135,7 +144,8 @@ func NewChatAgent(ctx context.Context, llmModel model.LLM, mcpConfig config.MCPC
 
 // createMCPToolsets creates MCP toolsets based on configuration
 func createMCPToolsets(mcpConfig config.MCPConfig, log logger.Logger) []tool.Toolset {
-	var toolsets []tool.Toolset
+	// Pre-allocate with estimated capacity
+	toolsets := make([]tool.Toolset, 0, len(mcpConfig.Servers))
 
 	for serverName, serverConfig := range mcpConfig.Servers {
 		// Skip disabled servers

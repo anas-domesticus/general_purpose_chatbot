@@ -57,7 +57,7 @@ func (p *LocalFileProvider) Write(ctx context.Context, path string, data []byte)
 		return fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
 
-	return os.WriteFile(fullPath, data, 0o644)
+	return os.WriteFile(fullPath, data, 0o600)
 }
 
 // Exists checks if a file exists on the local filesystem.

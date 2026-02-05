@@ -96,7 +96,11 @@ func (m *Metrics) Listen(port int) {
 	mux := http.NewServeMux()
 	mux.Handle("/", http.NotFoundHandler())
 	mux.Handle("/metrics", promhttp.HandlerFor(m.reg, promhttp.HandlerOpts{}))
-	server := &http.Server{Addr: fmt.Sprintf(":%d", port), Handler: mux}
+	server := &http.Server{
+		Addr:              fmt.Sprintf(":%d", port),
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 
 	sigChan := make(chan os.Signal)
 	errChan := make(chan error)
