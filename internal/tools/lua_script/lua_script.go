@@ -281,7 +281,7 @@ func goValueToLua(ls *lua.LState, value any) lua.LValue {
 		}
 		return tbl
 	default:
-		// Try JSON marshalling for complex types
+		// Try JSON marshaling for complex types
 		data, err := json.Marshal(v)
 		if err != nil {
 			return lua.LString(fmt.Sprintf("%v", v))

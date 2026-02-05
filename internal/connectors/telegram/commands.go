@@ -83,7 +83,7 @@ func (c *Connector) handleHelpCommand(ctx context.Context, b *bot.Bot, update *m
 	return helpText, nil
 }
 
-// setupCommands initialises the command registry with all available commands
+// setupCommands initializes the command registry with all available commands
 func (c *Connector) setupCommands() {
 	c.commands = NewCommandRegistry()
 	c.commands.Register("/new", func(ctx context.Context, b *bot.Bot, update *models.Update) (string, error) {

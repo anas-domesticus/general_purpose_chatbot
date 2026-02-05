@@ -81,7 +81,7 @@ func (s *SessionService) Create(ctx context.Context, req *session.CreateRequest)
 	// Create session key for file storage
 	sessionKey := s.getSessionKey(req.AppName, req.UserID, sessionID)
 
-	// Check if session already exists - return error to match ADK behaviour
+	// Check if session already exists - return error to match ADK behavior
 	exists, err := s.fileProvider.Exists(ctx, sessionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check if session exists: %w", err)
@@ -336,7 +336,7 @@ func (s *SessionService) AppendEvent(ctx context.Context, sess session.Session, 
 		return fmt.Errorf("failed to load session for event append: %w", err)
 	}
 
-	// Initialise events slice if nil
+	// Initialize events slice if nil
 	if sessionData.Events == nil {
 		sessionData.Events = make([]*session.Event, 0)
 	}
@@ -471,12 +471,12 @@ func (s *SessionService) saveSession(ctx context.Context, sessionKey string, ses
 // sessionDataToADKSession converts internal session data to ADK session interface.
 // Creates defensive copies of state and events to prevent external modifications.
 func (s *SessionService) sessionDataToADKSession(data *SessionData) session.Session {
-	// Initialise state if nil
+	// Initialize state if nil
 	if data.State == nil {
 		data.State = make(map[string]any)
 	}
 
-	// Initialise events if nil
+	// Initialize events if nil
 	if data.Events == nil {
 		data.Events = make([]*session.Event, 0)
 	}

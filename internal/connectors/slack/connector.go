@@ -52,7 +52,7 @@ func NewConnector(config Config, exec *executor.Executor, sessionMgr session_man
 		return nil, fmt.Errorf("logger is required")
 	}
 
-	// Initialise Slack clients
+	// Initialize Slack clients
 	client := slack.New(
 		config.BotToken,
 		slack.OptionAppLevelToken(config.AppToken),

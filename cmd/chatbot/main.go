@@ -25,7 +25,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialise structured logger
+	// Initialize structured logger
 	log := logger.NewLogger(logger.Config{
 		Level:   cfg.GetLogLevel(),
 		Format:  cfg.Logging.Format,

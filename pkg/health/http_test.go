@@ -155,7 +155,7 @@ func TestReadinessHandler(t *testing.T) {
 		handler := h.ReadinessHandler()
 		handler(w, req)
 
-		// Should still return a response even with cancelled context
+		// Should still return a response even with canceled context
 		assert.NotEqual(t, 0, w.Code)
 	})
 }

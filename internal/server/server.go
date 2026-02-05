@@ -16,6 +16,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/agents"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/artifact_service"
 	appconfig "github.com/lewisedginton/general_purpose_chatbot/internal/config"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/executor"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/slack"
@@ -30,6 +31,7 @@ import (
 	"github.com/lewisedginton/general_purpose_chatbot/internal/tools/agent_info"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/tools/http_request"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
+	"google.golang.org/adk/artifact"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/model/gemini"
 	"google.golang.org/adk/tool"
@@ -52,10 +54,11 @@ type Server struct {
 	sessionManager    session_manager.Manager
 	skillsManager     skills_manager.Manager
 	promptManager     *prompt_manager.PromptManager
+	artifactService   artifact.Service
 	cancel            context.CancelFunc
 }
 
-// New creates a new Server instance with all components initialised
+// New creates a new Server instance with all components initialized
 //
 //nolint:revive // cognitive-complexity: Server initialization requires sequential component setup
 func New(ctx context.Context, cfg *appconfig.AppConfig, log logger.Logger) (*Server, error) {
@@ -82,6 +85,9 @@ func New(ctx context.Context, cfg *appconfig.AppConfig, log logger.Logger) (*Ser
 	if err != nil {
 		return nil, fmt.Errorf("failed to create skills manager: %w", err)
 	}
+
+	// Create artifact service
+	s.artifactService = s.createArtifactService()
 
 	// Create prompt manager using local filesystem (prompts are part of deployment, not user data)
 	promptProvider := storage_manager.NewLocalFileProvider("prompts")
@@ -112,7 +118,7 @@ func New(ctx context.Context, cfg *appconfig.AppConfig, log logger.Logger) (*Ser
 	}
 
 	// Create executor with agent factory (shared across all platforms)
-	s.executor, err = executor.NewExecutor(chatAgentFactory, "chatbot", s.sessionManager.GetADKSessionService())
+	s.executor, err = executor.NewExecutor(chatAgentFactory, "chatbot", s.sessionManager.GetADKSessionService(), s.artifactService)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create executor: %w", err)
 	}
@@ -240,7 +246,7 @@ func (s *Server) Run() error {
 	return nil
 }
 
-// startHealthServer initialises and starts the health check HTTP server
+// startHealthServer initializes and starts the health check HTTP server
 func (s *Server) startHealthServer(ctx context.Context) error {
 	if !s.cfg.Health.Enabled {
 		s.log.Info("Health checks disabled")
@@ -383,6 +389,13 @@ func (s *Server) createSkillsManager() (skills_manager.Manager, error) {
 	})
 }
 
+// createArtifactService creates an artifact service using the storage manager.
+func (s *Server) createArtifactService() artifact.Service {
+	// Use storage manager with "artifacts" namespace
+	provider := s.storageManager.GetProvider("artifacts")
+	return artifact_service.NewArtifactService(provider, s.log)
+}
+
 // createTools creates the tools for the agent
 func (s *Server) createTools(llmModel model.LLM) ([]tool.Tool, error) {
 	var tools []tool.Tool
@@ -451,12 +464,12 @@ func (s *Server) createLLMModel(ctx context.Context) (model.LLM, error) {
 
 	switch provider {
 	case "claude":
-		s.log.Info("Initialising Claude model",
+		s.log.Info("Initializing Claude model",
 			logger.StringField("model", s.cfg.Anthropic.Model))
 		return anthropic.NewClaudeModel(s.cfg.Anthropic.APIKey, s.cfg.Anthropic.Model)
 
 	case "gemini":
-		s.log.Info("Initialising Gemini model",
+		s.log.Info("Initializing Gemini model",
 			logger.StringField("model", s.cfg.Gemini.Model))
 
 		// Configure the Gemini client
@@ -477,7 +490,7 @@ func (s *Server) createLLMModel(ctx context.Context) (model.LLM, error) {
 		return gemini.NewModel(ctx, s.cfg.Gemini.Model, clientConfig)
 
 	case "openai":
-		s.log.Info("Initialising OpenAI model",
+		s.log.Info("Initializing OpenAI model",
 			logger.StringField("model", s.cfg.OpenAI.Model))
 		return openai.New(s.cfg.OpenAI.APIKey, s.cfg.OpenAI.Model)
 
