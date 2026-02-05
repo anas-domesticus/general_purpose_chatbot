@@ -1,13 +1,15 @@
-# golangci-lint configuration for General Purpose Chatbot Framework
+# golangci-lint v2 configuration for General Purpose Chatbot Framework
+version: "2"
+
 run:
   timeout: 5m
-  tests: true
 
 output:
   formats:
-    - format: colored-line-number
-  print-linter-name: true
-  print-issued-lines: true
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
 
 linters:
   enable:
@@ -52,36 +54,37 @@ linters:
     - varnamelen
     - tagliatelle
 
-linters-settings:
-  gocyclo:
-    min-complexity: 15
-  goconst:
-    min-len: 3
-    min-occurrences: 3
-  misspell:
-    locale: UK
-  lll:
-    line-length: 150
-  goimports:
-    local-prefixes: github.com/lewisedginton/general-purpose-chatbot
-  depguard:
-    rules:
-      main:
-        deny:
-          - pkg: "io/ioutil"
-            desc: "Use os or io package instead"
-  revive:
-    severity: warning
-    rules:
-      - name: exported
-        arguments:
-          - disableStutteringCheck  # Allow types like health.HealthChecker
-      - name: package-comments
-      - name: var-naming
-      - name: function-result-limit
-        arguments: [3]
-      - name: cognitive-complexity
-        arguments: [20]
+  settings:
+    gocyclo:
+      min-complexity: 15
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    misspell:
+      locale: UK
+    lll:
+      line-length: 150
+    goimports:
+      local-prefixes:
+        - github.com/lewisedginton/general-purpose-chatbot
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: "io/ioutil"
+              desc: "Use os or io package instead"
+    revive:
+      severity: warning
+      rules:
+        - name: exported
+          arguments:
+            - disableStutteringCheck
+        - name: package-comments
+        - name: var-naming
+        - name: function-result-limit
+          arguments: [3]
+        - name: cognitive-complexity
+          arguments: [20]
 
 issues:
   exclude-dirs:
