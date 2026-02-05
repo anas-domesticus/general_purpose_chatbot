@@ -1,5 +1,5 @@
 // Package http_request provides HTTP request tools for the chatbot.
-package http_request
+package http_request //nolint:revive // var-naming: using underscores for domain clarity
 
 import (
 	"bytes"
@@ -41,8 +41,8 @@ func handler(ctx tool.Context, args Args) (Result, error) {
 		bodyReader = bytes.NewBufferString(args.Body)
 	}
 
-	// Create HTTP request
-	req, err := http.NewRequest(args.Method, args.URL, bodyReader)
+	// Create HTTP request with context
+	req, err := http.NewRequestWithContext(ctx, args.Method, args.URL, bodyReader)
 	if err != nil {
 		return Result{
 			Error: "Failed to create request: " + err.Error(),

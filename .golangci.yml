@@ -1,28 +1,23 @@
-# golangci-lint configuration for General Purpose Chatbot Framework
-# Based on official v2 schema: https://golangci-lint.run/docs/configuration/file/
+# golangci-lint v2 configuration for General Purpose Chatbot Framework
 version: "2"
 
 run:
   timeout: 5m
-  tests: true
 
 output:
   formats:
     text:
+      path: stdout
       print-linter-name: true
-      print-issued-lines: true
 
 formatters:
   enable:
     - gofmt
     - gofumpt
     - goimports
-  settings:
-    goimports:
-      local-prefixes:
-        - github.com/lewisedginton/general-purpose-chatbot
 
 linters:
+  default: none
   enable:
     # Base linters
     - errcheck
@@ -50,22 +45,6 @@ linters:
     - bodyclose
     - noctx
 
-  disable:
-    - exhaustive
-    - exhaustruct
-    - funlen
-    - cyclop
-    - wsl
-    - nlreturn
-    - varnamelen
-    - tagliatelle
-
-  exclusions:
-    # Exclude sqlc-generated files and tests
-    paths:
-      - "internal/cli/persistence/sqlc"
-      - ".*_test\\.go$"
-
   settings:
     gocyclo:
       min-complexity: 15
@@ -87,10 +66,29 @@ linters:
       rules:
         - name: exported
           arguments:
-            - disableStutteringCheck  # Allow types like health.HealthChecker
+            - disableStutteringCheck
         - name: package-comments
         - name: var-naming
         - name: function-result-limit
           arguments: [3]
         - name: cognitive-complexity
           arguments: [20]
+
+  exclusions:
+    generated: lax
+    paths:
+      - internal/cli/persistence/sqlc
+    rules:
+      # Exclude some checks for test files (standard practice)
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - unparam
+          - prealloc
+          - gocyclo
+          - gocognit
+          - revive
+          - noctx
+          - goconst
+          - staticcheck

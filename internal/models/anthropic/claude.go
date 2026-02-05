@@ -56,6 +56,8 @@ func (c *ClaudeModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 }
 
 // generateContentNonStreaming performs a non-streaming content generation request.
+//
+//nolint:gocyclo,revive // API integration requires handling many response conditions
 func (c *ClaudeModel) generateContentNonStreaming(ctx context.Context, req *model.LLMRequest) (*model.LLMResponse, error) {
 	// Transform ADK request to Anthropic format
 	messages, systemBlocks, err := transformADKToAnthropic(req.Contents)

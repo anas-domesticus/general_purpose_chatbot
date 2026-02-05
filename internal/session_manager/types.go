@@ -1,4 +1,4 @@
-package session_manager
+package session_manager //nolint:revive // var-naming: using underscores for domain clarity
 
 import (
 	"time"

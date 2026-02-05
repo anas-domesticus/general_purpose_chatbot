@@ -1,4 +1,4 @@
-package storage_manager
+package storage_manager //nolint:revive // var-naming: using underscores for domain clarity
 
 import (
 	"fmt"

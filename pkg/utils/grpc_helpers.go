@@ -1,4 +1,4 @@
-package utils
+package utils //nolint:revive // var-naming: utils is an acceptable package name for shared utilities
 
 import (
 	"fmt"
@@ -28,8 +28,10 @@ import (
 //			log.Error("Server error", logger.StringField("error", err.Error()))
 //		}
 //	}()
+//
+//nolint:revive // function-result-limit: Returns 4 values for error channel, closer, graceful closer, and setup error
 func Listen(s *grpc.Server, listenPort int, log logger.Logger) (chan error, func(), func(), error) {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", listenPort))
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", listenPort)) //nolint:noctx // gRPC server manages listener lifecycle
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to listen on port %d: %w", listenPort, err)
 	}

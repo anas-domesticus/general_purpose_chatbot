@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	_ "net/http/pprof"
+	_ "net/http/pprof" //nolint:gosec // G108: pprof is intentionally enabled for debugging
 	"os"
 	"os/signal"
 	"strings"
@@ -56,6 +56,8 @@ type Server struct {
 }
 
 // New creates a new Server instance with all components initialised
+//
+//nolint:revive // cognitive-complexity: Server initialization requires sequential component setup
 func New(ctx context.Context, cfg *appconfig.AppConfig, log logger.Logger) (*Server, error) {
 	s := &Server{
 		cfg: cfg,
@@ -70,13 +72,13 @@ func New(ctx context.Context, cfg *appconfig.AppConfig, log logger.Logger) (*Ser
 	}
 
 	// Create session manager (includes ADK session service)
-	s.sessionManager, err = s.createSessionManager()
+	s.sessionManager, err = s.createSessionManager() //nolint:contextcheck // Session manager creation doesn't need request context
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session manager: %w", err)
 	}
 
 	// Create skills manager
-	s.skillsManager, err = s.createSkillsManager()
+	s.skillsManager, err = s.createSkillsManager() //nolint:contextcheck // Skills manager creation doesn't need request context
 	if err != nil {
 		return nil, fmt.Errorf("failed to create skills manager: %w", err)
 	}
@@ -92,7 +94,7 @@ func New(ctx context.Context, cfg *appconfig.AppConfig, log logger.Logger) (*Ser
 	}
 
 	// Create tools for the agent
-	tools, err := s.createTools(llmModel)
+	tools, err := s.createTools(llmModel) //nolint:contextcheck // Tool creation doesn't need request context
 	if err != nil {
 		return nil, fmt.Errorf("failed to create tools: %w", err)
 	}
@@ -143,6 +145,8 @@ func New(ctx context.Context, cfg *appconfig.AppConfig, log logger.Logger) (*Ser
 }
 
 // Run starts the server and blocks until shutdown
+//
+//nolint:revive // cognitive-complexity: Server orchestration requires managing multiple connectors
 func (s *Server) Run() error {
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -151,10 +155,15 @@ func (s *Server) Run() error {
 
 	s.setupGracefulShutdown()
 
-	// Start pprof server for profiling
+	// Start pprof server for profiling (localhost only for security)
 	go func() {
 		s.log.Info("Starting pprof server on :6060")
-		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+		pprofServer := &http.Server{
+			Addr:              "localhost:6060",
+			Handler:           nil, // Uses DefaultServeMux with pprof handlers
+			ReadHeaderTimeout: 10 * time.Second,
+		}
+		if err := pprofServer.ListenAndServe(); err != nil {
 			s.log.Error("pprof server failed", logger.ErrorField(err))
 		}
 	}()
@@ -259,8 +268,9 @@ func (s *Server) startHealthServer(ctx context.Context) error {
 	mux.HandleFunc(s.cfg.Health.CombinedPath, healthMonitor.HealthHandler())
 
 	server := &http.Server{
-		Addr:    fmt.Sprintf(":%d", s.cfg.Health.Port),
-		Handler: mux,
+		Addr:              fmt.Sprintf(":%d", s.cfg.Health.Port),
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	// Start server in background
@@ -275,10 +285,10 @@ func (s *Server) startHealthServer(ctx context.Context) error {
 	<-ctx.Done()
 	s.log.Info("Shutting down health server")
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second) //nolint:contextcheck // New context needed for shutdown
 	defer cancel()
 
-	if err := server.Shutdown(shutdownCtx); err != nil {
+	if err := server.Shutdown(shutdownCtx); err != nil { //nolint:contextcheck // Using new context for graceful shutdown
 		s.log.Error("Health server shutdown error", logger.ErrorField(err))
 		return err
 	}
@@ -295,8 +305,8 @@ func (s *Server) createStorageManager(ctx context.Context) (*storage_manager.Sto
 	case "local":
 		s.log.Info("Using local file-based storage", logger.StringField("directory", cfg.LocalDir))
 
-		// Ensure directory exists
-		if err := os.MkdirAll(cfg.LocalDir, 0755); err != nil {
+		// Ensure directory exists (0750 needed for directory traversal)
+		if err := os.MkdirAll(cfg.LocalDir, 0o750); err != nil {
 			return nil, fmt.Errorf("failed to create storage directory: %w", err)
 		}
 

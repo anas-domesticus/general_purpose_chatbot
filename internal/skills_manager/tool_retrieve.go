@@ -1,4 +1,4 @@
-package skills_manager
+package skills_manager //nolint:revive // var-naming: using underscores for domain clarity
 
 import (
 	"fmt"

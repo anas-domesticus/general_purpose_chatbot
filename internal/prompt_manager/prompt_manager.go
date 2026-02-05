@@ -1,6 +1,6 @@
 // Package prompt_manager provides access to system prompts and documents
 // stored via a FileProvider backend.
-package prompt_manager
+package prompt_manager //nolint:revive // var-naming: using underscores for domain clarity
 
 import (
 	"context"

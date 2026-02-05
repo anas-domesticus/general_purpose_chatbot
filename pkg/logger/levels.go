@@ -1,6 +1,14 @@
 // Package logger provides structured logging utilities.
 package logger
 
+// Level string constants
+const (
+	levelDebug = "debug"
+	levelInfo  = "info"
+	levelWarn  = "warn"
+	levelError = "error"
+)
+
 // Level represents log levels
 type Level int
 
@@ -19,28 +27,28 @@ const (
 func (l Level) String() string {
 	switch l {
 	case DebugLevel:
-		return "debug"
+		return levelDebug
 	case InfoLevel:
-		return "info"
+		return levelInfo
 	case WarnLevel:
-		return "warn"
+		return levelWarn
 	case ErrorLevel:
-		return "error"
+		return levelError
 	default:
-		return "info"
+		return levelInfo
 	}
 }
 
 // ParseLevel parses a string level into a Level enum
 func ParseLevel(levelStr string) Level {
 	switch levelStr {
-	case "debug":
+	case levelDebug:
 		return DebugLevel
-	case "info":
+	case levelInfo:
 		return InfoLevel
-	case "warn":
+	case levelWarn:
 		return WarnLevel
-	case "error":
+	case levelError:
 		return ErrorLevel
 	default:
 		return InfoLevel

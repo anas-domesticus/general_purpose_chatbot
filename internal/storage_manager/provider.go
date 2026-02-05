@@ -1,7 +1,7 @@
 // Package storage_manager provides unified storage abstraction for application persistence.
 // It supports local filesystem and S3 backends, allowing different components
 // (sessions, config, etc.) to get prefix-scoped file providers for isolated storage.
-package storage_manager
+package storage_manager //nolint:revive // var-naming: using underscores for domain clarity
 
 import (
 	"context"
@@ -44,7 +44,7 @@ func NewLocalFileProvider(baseDir string) *LocalFileProvider {
 
 // Read reads a file from the local filesystem.
 func (p *LocalFileProvider) Read(ctx context.Context, path string) ([]byte, error) {
-	return os.ReadFile(filepath.Join(p.baseDir, path))
+	return os.ReadFile(filepath.Join(p.baseDir, path)) //nolint:gosec // G304: Path is constructed from trusted baseDir
 }
 
 // Write writes data to a local file.
@@ -53,11 +53,11 @@ func (p *LocalFileProvider) Write(ctx context.Context, path string, data []byte)
 
 	// Create directory if it doesn't exist
 	dir := filepath.Dir(fullPath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
 
-	return os.WriteFile(fullPath, data, 0o644)
+	return os.WriteFile(fullPath, data, 0o600)
 }
 
 // Exists checks if a file exists on the local filesystem.

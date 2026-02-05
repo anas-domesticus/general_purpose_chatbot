@@ -1,4 +1,4 @@
-package skills_manager
+package skills_manager //nolint:revive // var-naming: using underscores for domain clarity
 
 import (
 	"google.golang.org/adk/tool"
@@ -7,7 +7,8 @@ import (
 
 // SearchSkillsArgs represents the arguments for the search skills tool.
 type SearchSkillsArgs struct {
-	Query string `json:"query" jsonschema:"required" jsonschema_description:"Search query to match against skill names and descriptions. Use '*' to return all skills."`
+	// Query to match against skill names and descriptions. Use '*' to return all skills.
+	Query string `json:"query" jsonschema:"required" jsonschema_description:"Search query for skill names and descriptions. Use '*' for all."`
 }
 
 // SkillSummary represents a skill in search results (without full text).

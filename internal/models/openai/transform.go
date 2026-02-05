@@ -5,11 +5,23 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math"
 
 	"github.com/openai/openai-go"
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 )
+
+// safeInt64ToInt32 safely converts int64 to int32 with bounds checking.
+func safeInt64ToInt32(v int64) int32 {
+	if v > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if v < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(v)
+}
 
 // Finish reason constants (OpenAI uses plain strings)
 const (
@@ -22,6 +34,8 @@ const (
 
 // transformADKToOpenAI converts ADK content messages to OpenAI chat completion message params.
 // System messages are included inline in the messages array (OpenAI's standard format).
+//
+//nolint:revive // cognitive-complexity: Protocol transformation requires handling many content types
 func transformADKToOpenAI(contents []*genai.Content) ([]openai.ChatCompletionMessageParamUnion, error) {
 	var messages []openai.ChatCompletionMessageParamUnion
 
@@ -43,6 +57,8 @@ func transformADKToOpenAI(contents []*genai.Content) ([]openai.ChatCompletionMes
 }
 
 // convertContentToMessage converts a single genai.Content to an OpenAI ChatCompletionMessageParamUnion.
+//
+//nolint:revive // cognitive-complexity: Role-based conversion requires multiple branches
 func convertContentToMessage(content *genai.Content) (*openai.ChatCompletionMessageParamUnion, error) {
 	if content == nil || len(content.Parts) == 0 {
 		return nil, nil
@@ -199,7 +215,8 @@ func transformOpenAIToADK(completion *openai.ChatCompletion) (*model.LLMResponse
 	}
 
 	choice := completion.Choices[0]
-	var parts []*genai.Part
+	// Pre-allocate parts slice with estimated capacity
+	parts := make([]*genai.Part, 0, 1+len(choice.Message.ToolCalls))
 
 	// Handle text content
 	if choice.Message.Content != "" {
@@ -226,17 +243,17 @@ func transformOpenAIToADK(completion *openai.ChatCompletion) (*model.LLMResponse
 	// Map OpenAI finish reason to genai FinishReason
 	finishReason := mapFinishReason(choice.FinishReason)
 
-	// Build usage metadata
+	// Build usage metadata (safe int64 to int32 conversion with bounds check)
 	var usageMetadata *genai.GenerateContentResponseUsageMetadata
 	if completion.Usage.TotalTokens > 0 {
 		usageMetadata = &genai.GenerateContentResponseUsageMetadata{
-			PromptTokenCount:     int32(completion.Usage.PromptTokens),
-			CandidatesTokenCount: int32(completion.Usage.CompletionTokens),
-			TotalTokenCount:      int32(completion.Usage.TotalTokens),
+			PromptTokenCount:     safeInt64ToInt32(completion.Usage.PromptTokens),
+			CandidatesTokenCount: safeInt64ToInt32(completion.Usage.CompletionTokens),
+			TotalTokenCount:      safeInt64ToInt32(completion.Usage.TotalTokens),
 		}
 		// Handle cached tokens if available
 		if completion.Usage.PromptTokensDetails.CachedTokens > 0 {
-			usageMetadata.CachedContentTokenCount = int32(completion.Usage.PromptTokensDetails.CachedTokens)
+			usageMetadata.CachedContentTokenCount = safeInt64ToInt32(completion.Usage.PromptTokensDetails.CachedTokens)
 		}
 	}
 
@@ -285,7 +302,8 @@ func transformToolsToOpenAI(tools map[string]any) []openai.ChatCompletionToolPar
 		Declaration() *genai.FunctionDeclaration
 	}
 
-	var openaiTools []openai.ChatCompletionToolParam
+	// Pre-allocate with estimated capacity
+	openaiTools := make([]openai.ChatCompletionToolParam, 0, len(tools))
 
 	for _, toolDef := range tools {
 		// Type assert to tool with declaration method
