@@ -52,7 +52,7 @@ linters:
       min-len: 3
       min-occurrences: 3
     misspell:
-      locale: UK
+      locale: US
     lll:
       line-length: 150
     depguard:

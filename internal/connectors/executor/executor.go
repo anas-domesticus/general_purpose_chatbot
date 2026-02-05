@@ -8,6 +8,7 @@ import (
 
 	"github.com/lewisedginton/general_purpose_chatbot/internal/agents"
 	"google.golang.org/adk/agent"
+	"google.golang.org/adk/artifact"
 	"google.golang.org/adk/runner"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
@@ -15,21 +16,28 @@ import (
 
 // Executor handles execution of connector operations
 type Executor struct {
-	sessionService session.Service
-	appName        string
-	agentFactory   agents.AgentFactory
+	sessionService  session.Service
+	artifactService artifact.Service
+	appName         string
+	agentFactory    agents.AgentFactory
 }
 
 // NewExecutor creates a new Executor instance
-func NewExecutor(agentFactory agents.AgentFactory, appName string, sessionService session.Service) (*Executor, error) {
+func NewExecutor(
+	agentFactory agents.AgentFactory,
+	appName string,
+	sessionService session.Service,
+	artifactService artifact.Service,
+) (*Executor, error) {
 	if agentFactory == nil {
 		return nil, fmt.Errorf("agent factory cannot be nil")
 	}
 
 	return &Executor{
-		sessionService: sessionService,
-		appName:        appName,
-		agentFactory:   agentFactory,
+		sessionService:  sessionService,
+		artifactService: artifactService,
+		appName:         appName,
+		agentFactory:    agentFactory,
 	}, nil
 }
 
@@ -86,9 +94,10 @@ func (e *Executor) Execute(
 
 	// Create runner
 	r, err := runner.New(runner.Config{
-		AppName:        e.appName,
-		SessionService: e.sessionService,
-		Agent:          agentInstance,
+		AppName:         e.appName,
+		SessionService:  e.sessionService,
+		ArtifactService: e.artifactService,
+		Agent:           agentInstance,
 	})
 	if err != nil {
 		return MessageResponse{}, fmt.Errorf("failed to create runner: %w", err)

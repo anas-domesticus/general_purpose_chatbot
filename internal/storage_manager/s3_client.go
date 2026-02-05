@@ -129,7 +129,7 @@ func (c *AWSS3Client) ListObjects(ctx context.Context, bucket, prefix string) ([
 		if err != nil {
 			// Handle "not found" type errors gracefully - return empty list
 			// This allows the application to start even if the bucket/prefix
-			// hasn't been initialised yet (e.g., no skills have been created)
+			// hasn't been initialized yet (e.g., no skills have been created)
 			var noSuchBucket *types.NoSuchBucket
 			if errors.As(err, &noSuchBucket) {
 				return []string{}, nil

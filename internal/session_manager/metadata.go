@@ -20,7 +20,7 @@ func (sm *sessionManager) loadMetadata(ctx context.Context) error {
 	}
 
 	if !exists {
-		// Initialise with empty structure
+		// Initialize with empty structure
 		sm.config.Logger.Info("Metadata file does not exist, starting with empty index")
 		sm.index = make(map[string]map[string][]SessionInfo)
 		return nil

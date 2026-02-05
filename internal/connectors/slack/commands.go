@@ -67,7 +67,7 @@ func (c *Connector) handleHelpCommand(_ context.Context, _ slack.SlashCommand) (
 	}, nil
 }
 
-// setupCommands initialises the command registry with all available commands
+// setupCommands initializes the command registry with all available commands
 func (c *Connector) setupCommands() {
 	c.commands = NewCommandRegistry()
 	c.commands.Register("/new", func(ctx context.Context, cmd slack.SlashCommand) (interface{}, error) {

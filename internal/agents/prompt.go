@@ -14,5 +14,5 @@ You can help with:
 Be concise, helpful, and professional in your responses.
 Ask clarifying questions when you need more context.
 
-Note: No system prompt configured. Configure a prompt provider to customise these instructions.`
+Note: No system prompt configured. Configure a prompt provider to customize these instructions.`
 }
