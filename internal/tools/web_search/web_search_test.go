@@ -38,27 +38,73 @@ func TestNew_UsesDefaultBaseURL(t *testing.T) {
 	}
 }
 
-func TestParseDomains(t *testing.T) {
+func TestSearchClient_BuildRequestURL(t *testing.T) {
+	client := &searchClient{
+		apiKey:  "test-key",
+		baseURL: "https://www.searchapi.io",
+	}
+
 	tests := []struct {
-		input    string
-		expected []string
+		name     string
+		args     Args
+		contains []string
 	}{
-		{"", nil},
-		{"example.com", []string{"example.com"}},
-		{"example.com,test.com", []string{"example.com", "test.com"}},
-		{"example.com, test.com , other.com", []string{"example.com", "test.com", "other.com"}},
+		{
+			name:     "basic query",
+			args:     Args{Query: "test query"},
+			contains: []string{"api_key=test-key", "engine=google", "q=test+query"},
+		},
+		{
+			name:     "with num results",
+			args:     Args{Query: "test", NumResults: 20},
+			contains: []string{"num=20"},
+		},
+		{
+			name:     "with page",
+			args:     Args{Query: "test", Page: 2},
+			contains: []string{"page=2"},
+		},
+		{
+			name:     "with location",
+			args:     Args{Query: "test", Location: "New York"},
+			contains: []string{"location=New+York"},
+		},
+		{
+			name:     "with safe search",
+			args:     Args{Query: "test", SafeSearch: "active"},
+			contains: []string{"safe=active"},
+		},
+		{
+			name:     "caps num results at 100",
+			args:     Args{Query: "test", NumResults: 200},
+			contains: []string{"num=100"},
+		},
 	}
 
 	for _, tt := range tests {
-		result := parseDomains(tt.input)
-		if len(result) != len(tt.expected) {
-			t.Errorf("parseDomains(%q) = %v, expected %v", tt.input, result, tt.expected)
-			continue
-		}
-		for i, v := range result {
-			if v != tt.expected[i] {
-				t.Errorf("parseDomains(%q)[%d] = %q, expected %q", tt.input, i, v, tt.expected[i])
+		t.Run(tt.name, func(t *testing.T) {
+			url, err := client.buildRequestURL(tt.args)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
+			for _, substr := range tt.contains {
+				if !containsSubstring(url, substr) {
+					t.Errorf("URL %q should contain %q", url, substr)
+				}
+			}
+		})
+	}
+}
+
+func containsSubstring(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsAt(s, substr))
+}
+
+func containsAt(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
 		}
 	}
+	return false
 }

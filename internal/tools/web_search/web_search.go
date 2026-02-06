@@ -2,11 +2,12 @@
 package web_search //nolint:revive // var-naming: using underscores for domain clarity
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"time"
 
 	"google.golang.org/adk/tool"
@@ -22,53 +23,37 @@ type Config struct {
 
 // Args represents the arguments for the web search tool
 type Args struct {
-	Query             string `json:"query" jsonschema:"required" jsonschema_description:"The search query to execute"`
-	MaxResults        int    `json:"max_results,omitempty" jsonschema_description:"Maximum number of results (default: 5, max: 10)"`
-	IncludeAnswer     bool   `json:"include_answer,omitempty" jsonschema_description:"Include an AI-generated answer"`
-	SearchDepth       string `json:"search_depth,omitempty" jsonschema_description:"'basic' or 'advanced' (default: basic)"`
-	IncludeDomains    string `json:"include_domains,omitempty" jsonschema_description:"Comma-separated domains to include"`
-	ExcludeDomains    string `json:"exclude_domains,omitempty" jsonschema_description:"Comma-separated domains to exclude"`
-	IncludeRawContent bool   `json:"include_raw_content,omitempty" jsonschema_description:"Include raw HTML content"`
+	Query      string `json:"query" jsonschema:"required" jsonschema_description:"The search query to execute"`
+	NumResults int    `json:"num_results,omitempty" jsonschema_description:"Number of results (default: 10, max: 100)"`
+	Page       int    `json:"page,omitempty" jsonschema_description:"Page number for pagination (default: 1)"`
+	Location   string `json:"location,omitempty" jsonschema_description:"Location for localized results (e.g. 'New York')"`
+	SafeSearch string `json:"safe_search,omitempty" jsonschema_description:"Safe search: 'active' or 'off' (default: off)"`
 }
 
 // SearchResult represents a single search result
 type SearchResult struct {
-	Title   string  `json:"title"`
-	URL     string  `json:"url"`
-	Content string  `json:"content"`
-	Score   float64 `json:"score,omitempty"`
+	Title   string `json:"title"`
+	URL     string `json:"url"`
+	Snippet string `json:"snippet"`
 }
 
 // Result represents the result of the web search tool
 type Result struct {
 	Query   string         `json:"query"`
-	Answer  string         `json:"answer,omitempty"`
 	Results []SearchResult `json:"results"`
 	Error   string         `json:"error,omitempty"`
 }
 
-// tavilyRequest represents the request body for Tavily API
-type tavilyRequest struct {
-	APIKey            string   `json:"api_key"`
-	Query             string   `json:"query"`
-	MaxResults        int      `json:"max_results,omitempty"`
-	IncludeAnswer     bool     `json:"include_answer,omitempty"`
-	SearchDepth       string   `json:"search_depth,omitempty"`
-	IncludeDomains    []string `json:"include_domains,omitempty"`
-	ExcludeDomains    []string `json:"exclude_domains,omitempty"`
-	IncludeRawContent bool     `json:"include_raw_content,omitempty"`
-}
-
-// tavilyResponse represents the response from Tavily API
-type tavilyResponse struct {
-	Answer  string `json:"answer,omitempty"`
-	Query   string `json:"query"`
-	Results []struct {
-		Title   string  `json:"title"`
-		URL     string  `json:"url"`
-		Content string  `json:"content"`
-		Score   float64 `json:"score"`
-	} `json:"results"`
+// searchAPIResponse represents the response from SearchAPI.io
+type searchAPIResponse struct {
+	OrganicResults []struct {
+		Title   string `json:"title"`
+		Link    string `json:"link"`
+		Snippet string `json:"snippet"`
+	} `json:"organic_results"`
+	SearchInformation struct {
+		TotalResults string `json:"total_results"`
+	} `json:"search_information"`
 }
 
 // searchClient handles the HTTP communication with the search API
@@ -79,14 +64,12 @@ type searchClient struct {
 }
 
 func (c *searchClient) search(ctx tool.Context, args Args) Result {
-	reqBody := c.buildRequest(args)
-
-	jsonBody, err := json.Marshal(reqBody)
+	reqURL, err := c.buildRequestURL(args)
 	if err != nil {
-		return Result{Query: args.Query, Error: fmt.Sprintf("failed to serialize request: %v", err)}
+		return Result{Query: args.Query, Error: fmt.Sprintf("failed to build request: %v", err)}
 	}
 
-	body, statusCode, err := c.doRequest(ctx, jsonBody)
+	body, statusCode, err := c.doRequest(ctx, reqURL)
 	if err != nil {
 		return Result{Query: args.Query, Error: err.Error()}
 	}
@@ -98,47 +81,48 @@ func (c *searchClient) search(ctx tool.Context, args Args) Result {
 	return c.parseResponse(args.Query, body)
 }
 
-func (c *searchClient) buildRequest(args Args) tavilyRequest {
-	maxResults := args.MaxResults
-	if maxResults <= 0 {
-		maxResults = 5
-	}
-	if maxResults > 10 {
-		maxResults = 10
+func (c *searchClient) buildRequestURL(args Args) (string, error) {
+	u, err := url.Parse(c.baseURL + "/api/v1/search")
+	if err != nil {
+		return "", err
 	}
 
-	searchDepth := args.SearchDepth
-	if searchDepth == "" {
-		searchDepth = "basic"
+	q := u.Query()
+	q.Set("api_key", c.apiKey)
+	q.Set("engine", "google")
+	q.Set("q", args.Query)
+
+	if args.NumResults > 0 {
+		num := args.NumResults
+		if num > 100 {
+			num = 100
+		}
+		q.Set("num", strconv.Itoa(num))
 	}
 
-	req := tavilyRequest{
-		APIKey:            c.apiKey,
-		Query:             args.Query,
-		MaxResults:        maxResults,
-		IncludeAnswer:     args.IncludeAnswer,
-		SearchDepth:       searchDepth,
-		IncludeRawContent: args.IncludeRawContent,
+	if args.Page > 0 {
+		q.Set("page", strconv.Itoa(args.Page))
 	}
 
-	if args.IncludeDomains != "" {
-		req.IncludeDomains = parseDomains(args.IncludeDomains)
-	}
-	if args.ExcludeDomains != "" {
-		req.ExcludeDomains = parseDomains(args.ExcludeDomains)
+	if args.Location != "" {
+		q.Set("location", args.Location)
 	}
 
-	return req
+	if args.SafeSearch != "" {
+		q.Set("safe", args.SafeSearch)
+	}
+
+	u.RawQuery = q.Encode()
+	return u.String(), nil
 }
 
-func (c *searchClient) doRequest(ctx tool.Context, jsonBody []byte) ([]byte, int, error) {
+func (c *searchClient) doRequest(ctx tool.Context, reqURL string) ([]byte, int, error) {
 	client := &http.Client{Timeout: c.timeout}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/search", bytes.NewBuffer(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -155,24 +139,22 @@ func (c *searchClient) doRequest(ctx tool.Context, jsonBody []byte) ([]byte, int
 }
 
 func (c *searchClient) parseResponse(query string, body []byte) Result {
-	var tavilyResp tavilyResponse
-	if err := json.Unmarshal(body, &tavilyResp); err != nil {
+	var apiResp searchAPIResponse
+	if err := json.Unmarshal(body, &apiResp); err != nil {
 		return Result{Query: query, Error: fmt.Sprintf("failed to parse response: %v", err)}
 	}
 
-	results := make([]SearchResult, len(tavilyResp.Results))
-	for i, r := range tavilyResp.Results {
+	results := make([]SearchResult, len(apiResp.OrganicResults))
+	for i, r := range apiResp.OrganicResults {
 		results[i] = SearchResult{
 			Title:   r.Title,
-			URL:     r.URL,
-			Content: r.Content,
-			Score:   r.Score,
+			URL:     r.Link,
+			Snippet: r.Snippet,
 		}
 	}
 
 	return Result{
-		Query:   tavilyResp.Query,
-		Answer:  tavilyResp.Answer,
+		Query:   query,
 		Results: results,
 	}
 }
@@ -184,7 +166,7 @@ func New(cfg Config) (tool.Tool, error) {
 	}
 
 	if cfg.BaseURL == "" {
-		cfg.BaseURL = "https://api.tavily.com"
+		cfg.BaseURL = "https://www.searchapi.io"
 	}
 
 	if cfg.Timeout == 0 {
@@ -205,16 +187,4 @@ func New(cfg Config) (tool.Tool, error) {
 		Name:        "web_search",
 		Description: "Search the web for current information about any topic, news, or facts.",
 	}, handler)
-}
-
-// parseDomains splits a comma-separated domain string into a slice
-func parseDomains(domains string) []string {
-	var result []string
-	for _, d := range bytes.Split([]byte(domains), []byte(",")) {
-		trimmed := bytes.TrimSpace(d)
-		if len(trimmed) > 0 {
-			result = append(result, string(trimmed))
-		}
-	}
-	return result
 }
