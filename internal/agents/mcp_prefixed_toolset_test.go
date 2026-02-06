@@ -1,12 +1,17 @@
 package agents
 
 import (
+	"context"
+	"errors"
+	"net/http"
 	"testing"
 
+	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/tool"
 	"google.golang.org/genai"
+	"google.golang.org/grpc"
 )
 
 // mockTool implements the tool.Tool interface for testing
@@ -48,9 +53,45 @@ func (ts *mockToolset) Tools(_ agent.ReadonlyContext) ([]tool.Tool, error) {
 	return ts.tools, nil
 }
 
+// mockFailingToolset simulates an MCP toolset that fails to connect
+type mockFailingToolset struct {
+	name string
+	err  error
+}
+
+func (ts *mockFailingToolset) Name() string { return ts.name }
+func (ts *mockFailingToolset) Tools(_ agent.ReadonlyContext) ([]tool.Tool, error) {
+	return nil, ts.err
+}
+
+// testLogger is a simple logger for tests that captures log entries
+type testLogger struct {
+	warnMessages []string
+}
+
+func (l *testLogger) Debug(_ string, _ ...logger.LogField) {}
+func (l *testLogger) Info(_ string, _ ...logger.LogField)  {}
+func (l *testLogger) Warn(msg string, _ ...logger.LogField) {
+	l.warnMessages = append(l.warnMessages, msg)
+}
+func (l *testLogger) Error(_ string, _ ...logger.LogField) {}
+func (l *testLogger) WithFields(_ ...logger.LogField) logger.Logger {
+	return l
+}
+func (l *testLogger) WithCorrelationID(_ string) logger.Logger {
+	return l
+}
+func (l *testLogger) GrpcRequestsInterceptor(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	return handler(ctx, req)
+}
+func (l *testLogger) HTTPMiddleware(next http.Handler) http.Handler {
+	return next
+}
+
 func TestPrefixedMCPToolset_Name(t *testing.T) {
 	inner := &mockToolset{name: "inner_toolset"}
-	prefixed := newPrefixedMCPToolset("my_server", inner)
+	log := &testLogger{}
+	prefixed := newPrefixedMCPToolset("my_server", inner, log)
 
 	want := "mcp__my_server"
 	got := prefixed.Name()
@@ -65,7 +106,8 @@ func TestPrefixedMCPToolset_Tools(t *testing.T) {
 		&mockTool{name: "tool_b", description: "Tool B description"},
 	}
 	inner := &mockToolset{name: "inner", tools: innerTools}
-	prefixed := newPrefixedMCPToolset("my_server", inner)
+	log := &testLogger{}
+	prefixed := newPrefixedMCPToolset("my_server", inner, log)
 
 	tools, err := prefixed.Tools(nil)
 	if err != nil {
@@ -171,9 +213,10 @@ func TestPrefixedToolset_PreventsDuplicateNames(t *testing.T) {
 
 	inner1 := &mockToolset{name: "server1", tools: server1Tools}
 	inner2 := &mockToolset{name: "server2", tools: server2Tools}
+	log := &testLogger{}
 
-	prefixed1 := newPrefixedMCPToolset("filesystem", inner1)
-	prefixed2 := newPrefixedMCPToolset("github", inner2)
+	prefixed1 := newPrefixedMCPToolset("filesystem", inner1, log)
+	prefixed2 := newPrefixedMCPToolset("github", inner2, log)
 
 	tools1, _ := prefixed1.Tools(nil)
 	tools2, _ := prefixed2.Tools(nil)
@@ -191,5 +234,35 @@ func TestPrefixedToolset_PreventsDuplicateNames(t *testing.T) {
 	}
 	if name2 != "mcp__github__read_file" {
 		t.Errorf("tools2[0].Name() = %q, want %q", name2, "mcp__github__read_file")
+	}
+}
+
+func TestPrefixedMCPToolset_ToolsErrorHandling(t *testing.T) {
+	// Simulate an MCP server that fails to connect (e.g., 401 Unauthorized)
+	mcpError := errors.New("failed to init MCP session: calling \"initialize\": broken session: 401 Unauthorized")
+	inner := &mockFailingToolset{name: "failing_server", err: mcpError}
+	log := &testLogger{}
+	prefixed := newPrefixedMCPToolset("posthog", inner, log)
+
+	// Tools() should return an empty list instead of an error
+	tools, err := prefixed.Tools(nil)
+	if err != nil {
+		t.Fatalf("Tools() should not return an error, got: %v", err)
+	}
+
+	// Should return empty list, not nil
+	if tools == nil {
+		t.Fatal("Tools() returned nil, want empty slice")
+	}
+	if len(tools) != 0 {
+		t.Errorf("Tools() returned %d tools, want 0", len(tools))
+	}
+
+	// Should have logged a warning
+	if len(log.warnMessages) != 1 {
+		t.Errorf("Expected 1 warning message, got %d", len(log.warnMessages))
+	}
+	if len(log.warnMessages) > 0 && log.warnMessages[0] != "Failed to list tools from MCP server, skipping toolset" {
+		t.Errorf("Unexpected warning message: %q", log.warnMessages[0])
 	}
 }

@@ -167,9 +167,9 @@ func createMCPToolsets(mcpConfig config.MCPConfig, log logger.Logger) []tool.Too
 		case "stdio":
 			transport = createStdioTransport(serverConfig)
 		case "sse":
-			transport = createSSETransport(serverConfig)
+			transport = createSSETransport(serverConfig, serverName, log)
 		case "http":
-			transport = createHTTPTransport(serverConfig)
+			transport = createHTTPTransport(serverConfig, serverName, log)
 		case "websocket":
 			transport = createWebSocketTransport(serverConfig)
 		default:
@@ -192,7 +192,7 @@ func createMCPToolsets(mcpConfig config.MCPConfig, log logger.Logger) []tool.Too
 
 		// Wrap the toolset to prefix tool names with server name
 		// This prevents conflicts when multiple MCP servers expose tools with the same name
-		prefixedToolset := newPrefixedMCPToolset(serverName, mcpToolset)
+		prefixedToolset := newPrefixedMCPToolset(serverName, mcpToolset, log)
 		toolsets = append(toolsets, prefixedToolset)
 		log.Info("Successfully created MCP toolset", logger.StringField("server", serverName))
 	}
@@ -222,18 +222,18 @@ func createStdioTransport(serverConfig config.MCPServerConfig) mcp.Transport {
 }
 
 // createSSETransport creates SSE transport for MCP servers (2024-11-05 spec)
-func createSSETransport(serverConfig config.MCPServerConfig) mcp.Transport {
+func createSSETransport(serverConfig config.MCPServerConfig, serverName string, log logger.Logger) mcp.Transport {
 	return &mcp.SSEClientTransport{
 		Endpoint:   serverConfig.URL,
-		HTTPClient: createHTTPClient(serverConfig),
+		HTTPClient: createHTTPClient(serverConfig, serverName, log),
 	}
 }
 
 // createHTTPTransport creates streamable HTTP transport for MCP servers (2025-03-26 spec)
-func createHTTPTransport(serverConfig config.MCPServerConfig) mcp.Transport {
+func createHTTPTransport(serverConfig config.MCPServerConfig, serverName string, log logger.Logger) mcp.Transport {
 	return &mcp.StreamableClientTransport{
 		Endpoint:   serverConfig.URL,
-		HTTPClient: createHTTPClient(serverConfig),
+		HTTPClient: createHTTPClient(serverConfig, serverName, log),
 	}
 }
 
@@ -247,21 +247,25 @@ func createWebSocketTransport(serverConfig config.MCPServerConfig) mcp.Transport
 }
 
 // createHTTPClient creates an HTTP client with authentication and custom headers
-func createHTTPClient(serverConfig config.MCPServerConfig) *http.Client {
+func createHTTPClient(serverConfig config.MCPServerConfig, serverName string, log logger.Logger) *http.Client {
 	return &http.Client{
 		Transport: &authTransport{
-			base:    http.DefaultTransport,
-			headers: serverConfig.Headers,
-			auth:    serverConfig.Auth,
+			base:       http.DefaultTransport,
+			headers:    serverConfig.Headers,
+			auth:       serverConfig.Auth,
+			serverName: serverName,
+			log:        log,
 		},
 	}
 }
 
 // authTransport adds authentication and custom headers to HTTP requests
 type authTransport struct {
-	base    http.RoundTripper
-	headers map[string]string
-	auth    *config.MCPAuthConfig
+	base       http.RoundTripper
+	headers    map[string]string
+	auth       *config.MCPAuthConfig
+	serverName string
+	log        logger.Logger
 }
 
 func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -274,13 +278,31 @@ func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if t.auth != nil {
 		switch t.auth.Type {
 		case "bearer":
+			if t.auth.Token == "" {
+				t.log.Warn("MCP bearer auth configured but token is empty",
+					logger.StringField("server", t.serverName))
+			}
 			req.Header.Set("Authorization", "Bearer "+t.auth.Token)
 		case "basic":
 			req.SetBasicAuth(t.auth.User, t.auth.Pass)
 		case "api_key":
+			if t.auth.Header == "" {
+				t.log.Warn("MCP api_key auth configured but header name is empty",
+					logger.StringField("server", t.serverName))
+			}
 			req.Header.Set(t.auth.Header, t.auth.APIKey)
+		default:
+			t.log.Warn("Unknown MCP auth type configured",
+				logger.StringField("server", t.serverName),
+				logger.StringField("auth_type", t.auth.Type))
 		}
 	}
+
+	t.log.Debug("MCP HTTP request",
+		logger.StringField("server", t.serverName),
+		logger.StringField("method", req.Method),
+		logger.StringField("url", req.URL.String()),
+		logger.BoolField("has_auth", t.auth != nil))
 
 	return t.base.RoundTrip(req)
 }
