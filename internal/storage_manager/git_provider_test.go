@@ -4,7 +4,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/go-git/go-git/v5"
 )
@@ -314,4 +316,343 @@ func createTestGitProvider(t *testing.T) *GitFileProvider {
 	}
 
 	return provider
+}
+
+// createBareRepo creates a bare git repository to act as a remote for testing.
+func createBareRepo(t *testing.T) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	bareRepoPath := filepath.Join(tmpDir, "remote.git")
+
+	_, err := git.PlainInit(bareRepoPath, true)
+	if err != nil {
+		t.Fatalf("failed to create bare repo: %v", err)
+	}
+
+	return bareRepoPath
+}
+
+func TestGitFileProvider_CloneFromRemote(t *testing.T) {
+	// Create a "remote" bare repo
+	bareRepoPath := createBareRepo(t)
+
+	// Create a local repo with some content to push to bare repo
+	localTmpDir := t.TempDir()
+	localProvider, err := NewGitFileProvider(GitProviderOptions{
+		Path:          localTmpDir,
+		AuthorName:    "Setup User",
+		AuthorEmail:   "setup@example.com",
+		InitIfMissing: true,
+		RemoteURL:     bareRepoPath,
+		Branch:        "main",
+	})
+	if err != nil {
+		t.Fatalf("failed to create local provider: %v", err)
+	}
+
+	ctx := context.Background()
+	err = localProvider.Write(ctx, "initial.txt", []byte("initial content"))
+	if err != nil {
+		t.Fatalf("failed to write initial file: %v", err)
+	}
+
+	// Push to remote (directly, not via debounce)
+	localProvider.executePush()
+
+	// Now clone from the bare repo into a new directory
+	cloneTmpDir := t.TempDir()
+	clonePath := filepath.Join(cloneTmpDir, "cloned")
+
+	clonedProvider, err := NewGitFileProvider(GitProviderOptions{
+		Path:      clonePath,
+		RemoteURL: bareRepoPath,
+		Branch:    "main",
+	})
+	if err != nil {
+		t.Fatalf("failed to clone: %v", err)
+	}
+
+	// Verify the cloned repo has the file
+	data, err := clonedProvider.Read(ctx, "initial.txt")
+	if err != nil {
+		t.Fatalf("failed to read from cloned repo: %v", err)
+	}
+
+	if string(data) != "initial content" {
+		t.Errorf("expected 'initial content', got %q", data)
+	}
+}
+
+func TestGitFileProvider_PushDebouncing(t *testing.T) {
+	bareRepoPath := createBareRepo(t)
+	localTmpDir := t.TempDir()
+
+	// Use a short debounce for testing
+	provider, err := NewGitFileProvider(GitProviderOptions{
+		Path:              localTmpDir,
+		AuthorName:        "Test User",
+		AuthorEmail:       "test@example.com",
+		InitIfMissing:     true,
+		RemoteURL:         bareRepoPath,
+		Branch:            "main",
+		PushDebounceDelay: 100 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("failed to create provider: %v", err)
+	}
+	defer provider.Close()
+
+	ctx := context.Background()
+
+	// Write multiple files quickly
+	for i := 0; i < 3; i++ {
+		err := provider.Write(ctx, filepath.Join("file", string(rune('a'+i))+".txt"), []byte("content"))
+		if err != nil {
+			t.Fatalf("Write failed: %v", err)
+		}
+	}
+
+	// Verify pending push is scheduled
+	provider.pushMu.Lock()
+	hasPending := provider.pendingPush
+	provider.pushMu.Unlock()
+
+	if !hasPending {
+		t.Error("expected pending push to be true")
+	}
+
+	// Wait for debounce to complete
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify push completed
+	provider.pushMu.Lock()
+	hasPendingAfter := provider.pendingPush
+	provider.pushMu.Unlock()
+
+	if hasPendingAfter {
+		t.Error("expected pending push to be false after debounce")
+	}
+
+	// Clone and verify files exist
+	cloneTmpDir := t.TempDir()
+	clonePath := filepath.Join(cloneTmpDir, "verify")
+	cloned, err := NewGitFileProvider(GitProviderOptions{
+		Path:      clonePath,
+		RemoteURL: bareRepoPath,
+		Branch:    "main",
+	})
+	if err != nil {
+		t.Fatalf("failed to clone for verification: %v", err)
+	}
+
+	for i := 0; i < 3; i++ {
+		filename := filepath.Join("file", string(rune('a'+i))+".txt")
+		exists, err := cloned.Exists(ctx, filename)
+		if err != nil {
+			t.Fatalf("Exists failed: %v", err)
+		}
+		if !exists {
+			t.Errorf("expected %s to exist in remote", filename)
+		}
+	}
+}
+
+func TestGitFileProvider_Close(t *testing.T) {
+	t.Run("flushes pending push on close", func(t *testing.T) {
+		bareRepoPath := createBareRepo(t)
+		localTmpDir := t.TempDir()
+
+		provider, err := NewGitFileProvider(GitProviderOptions{
+			Path:              localTmpDir,
+			AuthorName:        "Test User",
+			AuthorEmail:       "test@example.com",
+			InitIfMissing:     true,
+			RemoteURL:         bareRepoPath,
+			Branch:            "main",
+			PushDebounceDelay: 10 * time.Second, // Long debounce
+		})
+		if err != nil {
+			t.Fatalf("failed to create provider: %v", err)
+		}
+
+		ctx := context.Background()
+		err = provider.Write(ctx, "close-test.txt", []byte("close content"))
+		if err != nil {
+			t.Fatalf("Write failed: %v", err)
+		}
+
+		// Verify push is pending
+		provider.pushMu.Lock()
+		hasPending := provider.pendingPush
+		provider.pushMu.Unlock()
+		if !hasPending {
+			t.Error("expected pending push before close")
+		}
+
+		// Close should flush
+		err = provider.Close()
+		if err != nil {
+			t.Fatalf("Close failed: %v", err)
+		}
+
+		// Clone and verify file exists
+		cloneTmpDir := t.TempDir()
+		clonePath := filepath.Join(cloneTmpDir, "verify")
+		cloned, err := NewGitFileProvider(GitProviderOptions{
+			Path:      clonePath,
+			RemoteURL: bareRepoPath,
+			Branch:    "main",
+		})
+		if err != nil {
+			t.Fatalf("failed to clone for verification: %v", err)
+		}
+
+		exists, err := cloned.Exists(ctx, "close-test.txt")
+		if err != nil {
+			t.Fatalf("Exists failed: %v", err)
+		}
+		if !exists {
+			t.Error("expected close-test.txt to exist in remote after close")
+		}
+	})
+
+	t.Run("close is idempotent", func(t *testing.T) {
+		provider := createTestGitProvider(t)
+
+		err := provider.Close()
+		if err != nil {
+			t.Fatalf("first Close failed: %v", err)
+		}
+
+		err = provider.Close()
+		if err != nil {
+			t.Fatalf("second Close failed: %v", err)
+		}
+	})
+}
+
+func TestGitFileProvider_WriteAfterClose(t *testing.T) {
+	provider := createTestGitProvider(t)
+
+	err := provider.Close()
+	if err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+
+	ctx := context.Background()
+	err = provider.Write(ctx, "after-close.txt", []byte("content"))
+	if err == nil {
+		t.Error("expected error when writing after close")
+	}
+}
+
+func TestGitFileProvider_DeleteAfterClose(t *testing.T) {
+	provider := createTestGitProvider(t)
+
+	ctx := context.Background()
+	// Write a file before closing
+	err := provider.Write(ctx, "to-delete.txt", []byte("content"))
+	if err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+
+	err = provider.Close()
+	if err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+
+	err = provider.Delete(ctx, "to-delete.txt")
+	if err == nil {
+		t.Error("expected error when deleting after close")
+	}
+}
+
+func TestGitFileProvider_ConfigureRemoteOnExistingRepo(t *testing.T) {
+	bareRepoPath := createBareRepo(t)
+	localTmpDir := t.TempDir()
+
+	// Initialize a local repo first (without remote)
+	_, err := git.PlainInit(localTmpDir, false)
+	if err != nil {
+		t.Fatalf("failed to init local repo: %v", err)
+	}
+
+	// Open with remote URL - should configure the remote
+	provider, err := NewGitFileProvider(GitProviderOptions{
+		Path:          localTmpDir,
+		AuthorName:    "Test User",
+		AuthorEmail:   "test@example.com",
+		RemoteURL:     bareRepoPath,
+		Branch:        "main",
+		InitIfMissing: false,
+	})
+	if err != nil {
+		t.Fatalf("failed to open with remote: %v", err)
+	}
+
+	// Verify remote was configured
+	remote, err := provider.repo.Remote("origin")
+	if err != nil {
+		t.Fatalf("failed to get remote: %v", err)
+	}
+
+	urls := remote.Config().URLs
+	if len(urls) != 1 || urls[0] != bareRepoPath {
+		t.Errorf("expected remote URL %s, got %v", bareRepoPath, urls)
+	}
+}
+
+func TestGitFileProvider_ConcurrentWrites(t *testing.T) {
+	bareRepoPath := createBareRepo(t)
+	localTmpDir := t.TempDir()
+
+	provider, err := NewGitFileProvider(GitProviderOptions{
+		Path:              localTmpDir,
+		AuthorName:        "Test User",
+		AuthorEmail:       "test@example.com",
+		InitIfMissing:     true,
+		RemoteURL:         bareRepoPath,
+		Branch:            "main",
+		PushDebounceDelay: 500 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("failed to create provider: %v", err)
+	}
+	defer provider.Close()
+
+	ctx := context.Background()
+	var errors int32
+
+	// Write concurrently
+	done := make(chan struct{})
+	for i := 0; i < 5; i++ {
+		go func(idx int) {
+			defer func() { done <- struct{}{} }()
+			filename := filepath.Join("concurrent", string(rune('a'+idx))+".txt")
+			if err := provider.Write(ctx, filename, []byte("content")); err != nil {
+				atomic.AddInt32(&errors, 1)
+			}
+		}(i)
+	}
+
+	// Wait for all writes
+	for i := 0; i < 5; i++ {
+		<-done
+	}
+
+	if errors > 0 {
+		t.Errorf("got %d errors during concurrent writes", errors)
+	}
+
+	// Verify all files exist
+	for i := 0; i < 5; i++ {
+		filename := filepath.Join("concurrent", string(rune('a'+i))+".txt")
+		exists, err := provider.Exists(ctx, filename)
+		if err != nil {
+			t.Fatalf("Exists failed: %v", err)
+		}
+		if !exists {
+			t.Errorf("expected %s to exist", filename)
+		}
+	}
 }
