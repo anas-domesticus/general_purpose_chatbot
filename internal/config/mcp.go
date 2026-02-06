@@ -4,10 +4,9 @@ import "time"
 
 // MCPConfig holds Model Context Protocol configuration
 type MCPConfig struct {
-	Enabled   bool                       `env:"MCP_ENABLED" yaml:"enabled" default:"false"`
-	Servers   map[string]MCPServerConfig `yaml:"servers"`
-	Discovery MCPDiscoveryConfig         `yaml:"discovery"`
-	Timeout   time.Duration              `env:"MCP_TIMEOUT" yaml:"timeout" default:"30s"`
+	Enabled bool                       `env:"MCP_ENABLED" yaml:"enabled" default:"false"`
+	Servers map[string]MCPServerConfig `yaml:"servers"`
+	Timeout time.Duration              `env:"MCP_TIMEOUT" yaml:"timeout" default:"30s"`
 }
 
 // MCPServerConfig holds configuration for individual MCP servers
@@ -32,11 +31,4 @@ type MCPAuthConfig struct {
 	Pass   string `yaml:"pass,omitempty"`
 	APIKey string `yaml:"api_key,omitempty"`
 	Header string `yaml:"header,omitempty"`
-}
-
-// MCPDiscoveryConfig holds configuration for MCP server discovery
-type MCPDiscoveryConfig struct {
-	Enabled         bool          `yaml:"enabled" default:"true"`
-	RefreshInterval time.Duration `yaml:"refresh_interval" default:"5m"`
-	HealthChecks    bool          `yaml:"health_checks" default:"true"`
 }

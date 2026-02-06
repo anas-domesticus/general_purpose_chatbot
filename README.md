@@ -300,7 +300,6 @@ mcp:
 |----------|-------------|---------|
 | `SERVICE_NAME` | Service name | `general-purpose-chatbot` |
 | `ENVIRONMENT` | Environment (development/production) | `development` |
-| `PORT` | HTTP server port | `8080` |
 | `REQUEST_TIMEOUT` | Request timeout | `30s` |
 
 For complete configuration options, see the [example configs](docs/examples/).

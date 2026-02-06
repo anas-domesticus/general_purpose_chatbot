@@ -89,9 +89,7 @@ func TestMCPConfigValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			appConfig := &AppConfig{
 				MCP:            tt.config,
-				Port:           8080,
 				RequestTimeout: 30 * time.Second,
-				IdleTimeout:    60 * time.Second,
 				LLM:            LLMConfig{Provider: "claude"},
 				Anthropic: AnthropicConfig{
 					APIKey:         "test-api-key",
@@ -258,9 +256,7 @@ func TestMCPAuthValidation(t *testing.T) {
 						},
 					},
 				},
-				Port:           8080,
 				RequestTimeout: 30 * time.Second,
-				IdleTimeout:    60 * time.Second,
 				LLM:            LLMConfig{Provider: "claude"},
 				Anthropic: AnthropicConfig{
 					APIKey:         "test-api-key",
