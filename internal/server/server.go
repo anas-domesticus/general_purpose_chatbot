@@ -31,6 +31,7 @@ import (
 	"github.com/lewisedginton/general_purpose_chatbot/internal/storage_manager"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/tools/agent_info"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/tools/http_request"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/tools/web_search"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"google.golang.org/adk/artifact"
 	"google.golang.org/adk/memory"
@@ -456,6 +457,20 @@ func (s *Server) createTools(llmModel model.LLM) ([]tool.Tool, error) {
 		return nil, fmt.Errorf("failed to create prompt tools: %w", err)
 	}
 	tools = append(tools, promptTools...)
+
+	// Add web search tool if API key is configured
+	if s.cfg.Search.Enabled() {
+		webSearchTool, err := web_search.New(web_search.Config{
+			APIKey:  s.cfg.Search.APIKey,
+			BaseURL: s.cfg.Search.BaseURL,
+			Timeout: s.cfg.Search.Timeout,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create web search tool: %w", err)
+		}
+		tools = append(tools, webSearchTool)
+		s.log.Info("Web search tool enabled")
+	}
 
 	return tools, nil
 }
