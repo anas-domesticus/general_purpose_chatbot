@@ -68,6 +68,8 @@ type Config struct {
 }
 
 // Args represents the arguments for the web search tool
+//
+//nolint:lll // Engine description intentionally long to list all options for LLM
 type Args struct {
 	Query      string `json:"query" jsonschema:"required" jsonschema_description:"The search query to execute"`
 	Engine     string `json:"engine,omitempty" jsonschema_description:"Search engine (default: google). Options: google, google_news, google_images, google_videos, google_maps, google_shopping, google_scholar, google_finance, google_jobs, google_patents, google_trends, google_flights, google_hotels, google_lens, google_autocomplete, google_play, google_events, bing, bing_images, bing_videos, baidu, duckduckgo, yahoo, yandex, naver, amazon, ebay, walmart, shein, airbnb, tripadvisor, youtube"`
