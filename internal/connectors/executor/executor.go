@@ -7,8 +7,10 @@ import (
 	"strings"
 
 	"github.com/lewisedginton/general_purpose_chatbot/internal/agents"
+	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/artifact"
+	"google.golang.org/adk/memory"
 	"google.golang.org/adk/runner"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
@@ -18,26 +20,50 @@ import (
 type Executor struct {
 	sessionService  session.Service
 	artifactService artifact.Service
+	memoryService   memory.Service
 	appName         string
 	agentFactory    agents.AgentFactory
+	log             logger.Logger
 }
 
-// NewExecutor creates a new Executor instance
+// Config holds configuration for the executor.
+type Config struct {
+	AgentFactory    agents.AgentFactory
+	AppName         string
+	SessionService  session.Service
+	ArtifactService artifact.Service
+	MemoryService   memory.Service // Optional: if nil, memory is disabled
+	Logger          logger.Logger
+}
+
+// NewExecutor creates a new Executor instance (legacy signature for compatibility).
 func NewExecutor(
 	agentFactory agents.AgentFactory,
 	appName string,
 	sessionService session.Service,
 	artifactService artifact.Service,
 ) (*Executor, error) {
-	if agentFactory == nil {
+	return NewExecutorWithConfig(Config{
+		AgentFactory:    agentFactory,
+		AppName:         appName,
+		SessionService:  sessionService,
+		ArtifactService: artifactService,
+	})
+}
+
+// NewExecutorWithConfig creates a new Executor instance with full configuration.
+func NewExecutorWithConfig(cfg Config) (*Executor, error) {
+	if cfg.AgentFactory == nil {
 		return nil, fmt.Errorf("agent factory cannot be nil")
 	}
 
 	return &Executor{
-		sessionService:  sessionService,
-		artifactService: artifactService,
-		appName:         appName,
-		agentFactory:    agentFactory,
+		sessionService:  cfg.SessionService,
+		artifactService: cfg.ArtifactService,
+		memoryService:   cfg.MemoryService,
+		appName:         cfg.AppName,
+		agentFactory:    cfg.AgentFactory,
+		log:             cfg.Logger,
 	}, nil
 }
 
@@ -140,7 +166,37 @@ func (e *Executor) Execute(
 		return MessageResponse{}, fmt.Errorf("failed to execute agent: %w", lastError)
 	}
 
+	// Add session to memory after successful execution
+	if e.memoryService != nil {
+		e.addSessionToMemory(ctx, req.UserID, req.SessionID)
+	}
+
 	return MessageResponse{
 		Text: responseText.String(),
 	}, nil
+}
+
+// addSessionToMemory adds the current session to memory storage.
+func (e *Executor) addSessionToMemory(ctx context.Context, userID, sessionID string) {
+	sess, err := e.sessionService.Get(ctx, &session.GetRequest{
+		AppName:   e.appName,
+		UserID:    userID,
+		SessionID: sessionID,
+	})
+	if err != nil {
+		if e.log != nil {
+			e.log.Warn("Failed to get session for memory",
+				logger.StringField("session_id", sessionID),
+				logger.ErrorField(err))
+		}
+		return
+	}
+
+	if err := e.memoryService.AddSession(ctx, sess.Session); err != nil {
+		if e.log != nil {
+			e.log.Warn("Failed to add session to memory",
+				logger.StringField("session_id", sessionID),
+				logger.ErrorField(err))
+		}
+	}
 }

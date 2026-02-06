@@ -21,6 +21,7 @@ import (
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/executor"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/slack"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/telegram"
+	"github.com/lewisedginton/general_purpose_chatbot/internal/memory_service"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/models/anthropic"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/models/openai"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/monitoring"
@@ -32,6 +33,7 @@ import (
 	"github.com/lewisedginton/general_purpose_chatbot/internal/tools/http_request"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"google.golang.org/adk/artifact"
+	"google.golang.org/adk/memory"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/model/gemini"
 	"google.golang.org/adk/tool"
@@ -52,9 +54,10 @@ type Server struct {
 	telegramConnector *telegram.Connector
 	storageManager    *storage_manager.StorageManager
 	sessionManager    session_manager.Manager
+	memoryService     memory.Service
+	artifactService   artifact.Service
 	skillsManager     skills_manager.Manager
 	promptManager     *prompt_manager.PromptManager
-	artifactService   artifact.Service
 	cancel            context.CancelFunc
 }
 
@@ -79,6 +82,9 @@ func New(ctx context.Context, cfg *appconfig.AppConfig, log logger.Logger) (*Ser
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session manager: %w", err)
 	}
+
+	// Create memory service (uses storage manager with "memory" namespace)
+	s.memoryService = s.createMemoryService()
 
 	// Create skills manager
 	s.skillsManager, err = s.createSkillsManager() //nolint:contextcheck // Skills manager creation doesn't need request context
@@ -118,7 +124,14 @@ func New(ctx context.Context, cfg *appconfig.AppConfig, log logger.Logger) (*Ser
 	}
 
 	// Create executor with agent factory (shared across all platforms)
-	s.executor, err = executor.NewExecutor(chatAgentFactory, "chatbot", s.sessionManager.GetADKSessionService(), s.artifactService)
+	s.executor, err = executor.NewExecutorWithConfig(executor.Config{
+		AgentFactory:    chatAgentFactory,
+		AppName:         "chatbot",
+		SessionService:  s.sessionManager.GetADKSessionService(),
+		ArtifactService: s.artifactService,
+		MemoryService:   s.memoryService,
+		Logger:          log,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create executor: %w", err)
 	}
@@ -394,6 +407,17 @@ func (s *Server) createArtifactService() artifact.Service {
 	// Use storage manager with "artifacts" namespace
 	provider := s.storageManager.GetProvider("artifacts")
 	return artifact_service.NewArtifactService(provider, s.log)
+}
+
+// createMemoryService creates a memory service using the storage manager
+func (s *Server) createMemoryService() memory.Service {
+	// Use storage manager with "memory" namespace
+	provider := s.storageManager.GetProvider("memory")
+
+	return memory_service.New(memory_service.Config{
+		FileProvider: provider,
+		Logger:       s.log,
+	})
 }
 
 // createTools creates the tools for the agent
