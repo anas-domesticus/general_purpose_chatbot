@@ -14,6 +14,52 @@ import (
 	"google.golang.org/adk/tool/functiontool"
 )
 
+// Search engine constants for SearchAPI.io
+const (
+	// Google engines
+	EngineGoogle             = "google"
+	EngineGoogleNews         = "google_news"
+	EngineGoogleImages       = "google_images"
+	EngineGoogleVideos       = "google_videos"
+	EngineGoogleMaps         = "google_maps"
+	EngineGoogleShopping     = "google_shopping"
+	EngineGoogleScholar      = "google_scholar"
+	EngineGoogleFinance      = "google_finance"
+	EngineGoogleJobs         = "google_jobs"
+	EngineGooglePatents      = "google_patents"
+	EngineGoogleTrends       = "google_trends"
+	EngineGoogleFlights      = "google_flights"
+	EngineGoogleHotels       = "google_hotels"
+	EngineGoogleLens         = "google_lens"
+	EngineGoogleAutocomplete = "google_autocomplete"
+	EngineGooglePlay         = "google_play"
+	EngineGoogleEvents       = "google_events"
+
+	// Other search engines
+	EngineBing       = "bing"
+	EngineBingImages = "bing_images"
+	EngineBingVideos = "bing_videos"
+	EngineBaidu      = "baidu"
+	EngineDuckDuckGo = "duckduckgo"
+	EngineYahoo      = "yahoo"
+	EngineYandex     = "yandex"
+	EngineNaver      = "naver"
+
+	// E-commerce
+	EngineAmazon      = "amazon"
+	EngineEbay        = "ebay"
+	EngineWalmart     = "walmart"
+	EngineShein       = "shein"
+	EngineAirbnb      = "airbnb"
+	EngineTripadvisor = "tripadvisor"
+
+	// Media platforms
+	EngineYouTube = "youtube"
+
+	// Default engine
+	EngineDefault = EngineGoogle
+)
+
 // Config holds configuration for the web search tool
 type Config struct {
 	APIKey  string
@@ -90,7 +136,7 @@ func (c *searchClient) buildRequestURL(args Args) (string, error) {
 
 	engine := args.Engine
 	if engine == "" {
-		engine = "google"
+		engine = EngineDefault
 	}
 
 	q := u.Query()
