@@ -138,7 +138,33 @@ Place this file in the working directory or mount it as a volume in containers.
 
 ### Application Config (`config.yaml`)
 
-Configuration is loaded from YAML file first, then environment variables override any matching values. Use environment variables for sensitive values like API keys.
+Configuration is loaded from YAML file first, then environment variables override any matching values.
+
+#### Environment Variable Interpolation
+
+You can reference environment variables directly in YAML values using `${VAR}` or `$VAR` syntax. This is useful for keeping secrets out of config files:
+
+```yaml
+mcp:
+  servers:
+    database:
+      auth:
+        type: bearer
+        token: ${MCP_DATABASE_TOKEN}  # Expanded from environment variable
+    github:
+      auth:
+        type: api_key
+        api_key: ${GITHUB_TOKEN}
+        header: Authorization
+```
+
+Then set the environment variables:
+```bash
+export MCP_DATABASE_TOKEN="secret-bearer-token"
+export GITHUB_TOKEN="ghp_xxxxxxxxxxxx"
+```
+
+**Note:** Unset variables expand to empty strings. Use `$$` to include a literal `$` character.
 
 Minimal configuration example (using Anthropic):
 
@@ -197,7 +223,7 @@ mcp:
       url: ws://db-server:8080/mcp
       auth:
         type: bearer  # bearer, basic, or api_key
-        token: your-bearer-token  # or set via environment variable
+        token: ${MCP_DATABASE_TOKEN}  # interpolated from environment variable
 
     # Custom internal tools
     internal-api:

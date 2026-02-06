@@ -240,6 +240,7 @@ func GetConfigFromEnvVars[T any](dest *T) error {
 }
 
 // GetConfig loads configuration from YAML file first, then overlays environment variables.
+// Environment variables can be interpolated in YAML values using ${VAR} or $VAR syntax.
 // If filepath is empty, only environment variables are used.
 // If allowFileErrors is true, file read/parse errors fallback to env vars only.
 // Example usage:
@@ -257,7 +258,11 @@ func GetConfig[T any](dest *T, filepath string, allowFileErrors bool) error {
 		}
 		return fmt.Errorf("failed to read file: %w", err)
 	}
-	if err := yaml.Unmarshal(data, dest); err != nil {
+
+	// Expand environment variables in YAML content (e.g., ${VAR} or $VAR)
+	expanded := os.ExpandEnv(string(data))
+
+	if err := yaml.Unmarshal([]byte(expanded), dest); err != nil {
 		if allowFileErrors {
 			return GetConfigFromEnvVars(dest)
 		}

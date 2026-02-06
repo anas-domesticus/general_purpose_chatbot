@@ -71,7 +71,7 @@ mcp:
       url: ws://db-server:8080/mcp
       auth:
         type: bearer
-        token: your-bearer-token  # set via environment variable for sensitive tokens
+        token: ${MCP_DATABASE_TOKEN}  # interpolated from environment variable
       headers:
         X-Custom-Header: value
 

@@ -157,6 +157,70 @@ func TestHTTPServerConfigHelpers(t *testing.T) {
 	assert.Equal(t, "2m0s", cfg.IdleTimeout().String())
 }
 
+func TestGetConfigWithEnvInterpolation(t *testing.T) {
+	// Create a temporary YAML file with environment variable placeholders
+	yamlContent := `
+log_level: info
+http:
+  port: 8080
+api_key: ${TEST_API_KEY}
+debug: ${TEST_DEBUG}
+features:
+  - ${TEST_FEATURE_1}
+  - feature2
+`
+	tmpFile, err := os.CreateTemp("", "config-*.yaml")
+	assert.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+
+	_, err = tmpFile.WriteString(yamlContent)
+	assert.NoError(t, err)
+	tmpFile.Close()
+
+	// Clear environment and set test values
+	os.Clearenv()
+	os.Setenv("TEST_API_KEY", "secret-from-env")
+	os.Setenv("TEST_DEBUG", "true")
+	os.Setenv("TEST_FEATURE_1", "dynamic-feature")
+
+	// Load config
+	var cfg testConfig
+	err = GetConfig(&cfg, tmpFile.Name(), false)
+	assert.NoError(t, err)
+
+	// Verify environment variables were interpolated
+	assert.Equal(t, "secret-from-env", cfg.APIKey)
+	assert.Equal(t, true, cfg.Debug)
+	assert.Equal(t, []string{"dynamic-feature", "feature2"}, cfg.Features)
+
+	// Cleanup
+	os.Clearenv()
+}
+
+func TestGetConfigWithEnvInterpolationUnsetVar(t *testing.T) {
+	// Test that unset env vars become empty strings
+	yamlContent := `
+log_level: info
+api_key: ${UNSET_VAR}
+`
+	tmpFile, err := os.CreateTemp("", "config-*.yaml")
+	assert.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+
+	_, err = tmpFile.WriteString(yamlContent)
+	assert.NoError(t, err)
+	tmpFile.Close()
+
+	os.Clearenv()
+
+	var cfg testConfig
+	err = GetConfig(&cfg, tmpFile.Name(), false)
+	// Should fail because api_key is required and will be empty
+	assert.Error(t, err)
+
+	os.Clearenv()
+}
+
 func TestCommonConfigValidation(t *testing.T) {
 	testCases := []struct {
 		name     string
