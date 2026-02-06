@@ -101,7 +101,7 @@ type searchAPIResponse struct {
 		Snippet string `json:"snippet"`
 	} `json:"organic_results"`
 	SearchInformation struct {
-		TotalResults string `json:"total_results"`
+		TotalResults any `json:"total_results"`
 	} `json:"search_information"`
 }
 

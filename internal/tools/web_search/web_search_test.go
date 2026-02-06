@@ -106,6 +106,59 @@ func TestSearchClient_BuildRequestURL(t *testing.T) {
 	}
 }
 
+func TestSearchClient_ParseResponse(t *testing.T) {
+	client := &searchClient{}
+
+	tests := []struct {
+		name        string
+		body        string
+		wantResults int
+		wantError   bool
+	}{
+		{
+			name: "handles numeric total_results",
+			body: `{
+				"organic_results": [{"title": "Test", "link": "https://example.com", "snippet": "A test result"}],
+				"search_information": {"total_results": 12345}
+			}`,
+			wantResults: 1,
+			wantError:   false,
+		},
+		{
+			name: "handles string total_results",
+			body: `{
+				"organic_results": [{"title": "Test", "link": "https://example.com", "snippet": "A test result"}],
+				"search_information": {"total_results": "12345"}
+			}`,
+			wantResults: 1,
+			wantError:   false,
+		},
+		{
+			name: "handles missing search_information",
+			body: `{
+				"organic_results": [{"title": "Test", "link": "https://example.com", "snippet": "A test result"}]
+			}`,
+			wantResults: 1,
+			wantError:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := client.parseResponse("test query", []byte(tt.body))
+			if tt.wantError && result.Error == "" {
+				t.Error("expected error but got none")
+			}
+			if !tt.wantError && result.Error != "" {
+				t.Errorf("unexpected error: %s", result.Error)
+			}
+			if len(result.Results) != tt.wantResults {
+				t.Errorf("expected %d results, got %d", tt.wantResults, len(result.Results))
+			}
+		})
+	}
+}
+
 func containsSubstring(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsAt(s, substr))
 }
