@@ -7,9 +7,9 @@ import (
 
 // UpsertSkillArgs represents the arguments for the upsert skill tool.
 type UpsertSkillArgs struct {
-	Name        string `json:"name" jsonschema:"required" jsonschema_description:"The name of the skill (used as unique identifier)."`
-	Description string `json:"description" jsonschema:"required" jsonschema_description:"A brief description of what the skill does."`
-	Text        string `json:"text" jsonschema:"required" jsonschema_description:"The full text content of the skill."`
+	Name        string `json:"name" jsonschema:"The name of the skill (used as unique identifier)."`
+	Description string `json:"description" jsonschema:"A brief description of what the skill does."`
+	Text        string `json:"text" jsonschema:"The full text content of the skill."`
 }
 
 // UpsertSkillResult represents the result of the upsert skill tool.

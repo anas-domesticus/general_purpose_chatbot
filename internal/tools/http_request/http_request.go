@@ -13,10 +13,10 @@ import (
 
 // Args represents the arguments for the HTTP request tool
 type Args struct {
-	Method  string            `json:"method" jsonschema:"required" jsonschema_description:"HTTP method (GET, POST, PUT, DELETE, etc.)"`
-	URL     string            `json:"url" jsonschema:"required" jsonschema_description:"Target URL for the request"`
-	Headers map[string]string `json:"headers,omitempty" jsonschema_description:"Optional HTTP headers to include in the request"`
-	Body    string            `json:"body,omitempty" jsonschema_description:"Optional request body for POST, PUT, etc."`
+	Method  string            `json:"method" jsonschema:"HTTP method (GET, POST, PUT, DELETE, etc.)"`
+	URL     string            `json:"url" jsonschema:"Target URL for the request"`
+	Headers map[string]string `json:"headers,omitempty" jsonschema:"Optional HTTP headers to include in the request"`
+	Body    string            `json:"body,omitempty" jsonschema:"Optional request body for POST, PUT, etc."`
 }
 
 // Result represents the result of the HTTP request tool

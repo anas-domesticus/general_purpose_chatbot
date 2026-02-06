@@ -71,12 +71,12 @@ type Config struct {
 //
 //nolint:lll // Engine description intentionally long to list all options for LLM
 type Args struct {
-	Query      string `json:"query" jsonschema:"required" jsonschema_description:"The search query to execute"`
-	Engine     string `json:"engine,omitempty" jsonschema_description:"Search engine (default: google). Options: google, google_news, google_images, google_videos, google_maps, google_shopping, google_scholar, google_finance, google_jobs, google_patents, google_trends, google_flights, google_hotels, google_lens, google_autocomplete, google_play, google_events, bing, bing_images, bing_videos, baidu, duckduckgo, yahoo, yandex, naver, amazon, ebay, walmart, shein, airbnb, tripadvisor, youtube"`
-	NumResults int    `json:"num_results,omitempty" jsonschema_description:"Number of results (default: 10, max: 100)"`
-	Page       int    `json:"page,omitempty" jsonschema_description:"Page number for pagination (default: 1)"`
-	Location   string `json:"location,omitempty" jsonschema_description:"Location for localized results (e.g. 'New York')"`
-	SafeSearch string `json:"safe_search,omitempty" jsonschema_description:"Safe search: 'active' or 'off' (default: off)"`
+	Query      string `json:"query" jsonschema:"The search query to execute"`
+	Engine     string `json:"engine,omitempty" jsonschema:"Search engine (default: google). Options: google, google_news, google_images, google_videos, google_maps, google_shopping, google_scholar, google_finance, google_jobs, google_patents, google_trends, google_flights, google_hotels, google_lens, google_autocomplete, google_play, google_events, bing, bing_images, bing_videos, baidu, duckduckgo, yahoo, yandex, naver, amazon, ebay, walmart, shein, airbnb, tripadvisor, youtube"`
+	NumResults int    `json:"num_results,omitempty" jsonschema:"Number of results (default: 10, max: 100)"`
+	Page       int    `json:"page,omitempty" jsonschema:"Page number for pagination (default: 1)"`
+	Location   string `json:"location,omitempty" jsonschema:"Location for localized results (e.g. 'New York')"`
+	SafeSearch string `json:"safe_search,omitempty" jsonschema:"Safe search filter: 'active' or 'off' (default: off)"`
 }
 
 // SearchResult represents a single search result
@@ -115,16 +115,16 @@ type searchClient struct {
 func (c *searchClient) search(ctx tool.Context, args Args) Result {
 	reqURL, err := c.buildRequestURL(args)
 	if err != nil {
-		return Result{Query: args.Query, Error: fmt.Sprintf("failed to build request: %v", err)}
+		return Result{Query: args.Query, Results: []SearchResult{}, Error: fmt.Sprintf("failed to build request: %v", err)}
 	}
 
 	body, statusCode, err := c.doRequest(ctx, reqURL)
 	if err != nil {
-		return Result{Query: args.Query, Error: err.Error()}
+		return Result{Query: args.Query, Results: []SearchResult{}, Error: err.Error()}
 	}
 
 	if statusCode != http.StatusOK {
-		return Result{Query: args.Query, Error: fmt.Sprintf("API error (status %d): %s", statusCode, body)}
+		return Result{Query: args.Query, Results: []SearchResult{}, Error: fmt.Sprintf("API error (status %d): %s", statusCode, body)}
 	}
 
 	return c.parseResponse(args.Query, body)
@@ -195,7 +195,7 @@ func (c *searchClient) doRequest(ctx tool.Context, reqURL string) ([]byte, int, 
 func (c *searchClient) parseResponse(query string, body []byte) Result {
 	var apiResp searchAPIResponse
 	if err := json.Unmarshal(body, &apiResp); err != nil {
-		return Result{Query: query, Error: fmt.Sprintf("failed to parse response: %v", err)}
+		return Result{Query: query, Results: []SearchResult{}, Error: fmt.Sprintf("failed to parse response: %v", err)}
 	}
 
 	results := make([]SearchResult, len(apiResp.OrganicResults))

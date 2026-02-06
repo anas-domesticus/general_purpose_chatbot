@@ -8,7 +8,7 @@ import (
 // SearchSkillsArgs represents the arguments for the search skills tool.
 type SearchSkillsArgs struct {
 	// Query to match against skill names and descriptions. Use '*' to return all skills.
-	Query string `json:"query" jsonschema:"required" jsonschema_description:"Search query for skill names and descriptions. Use '*' for all."`
+	Query string `json:"query" jsonschema:"Search query for skill names and descriptions. Use '*' for all."`
 }
 
 // SkillSummary represents a skill in search results (without full text).

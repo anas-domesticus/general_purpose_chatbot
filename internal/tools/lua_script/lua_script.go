@@ -21,9 +21,9 @@ const (
 
 // Args represents the arguments for the Lua script tool
 type Args struct {
-	Script    string         `json:"script" jsonschema:"required" jsonschema_description:"Lua script code to execute"`
-	Variables map[string]any `json:"variables,omitempty" jsonschema_description:"Variables to pass to the script (accessible as globals)"`
-	Timeout   int            `json:"timeout,omitempty" jsonschema_description:"Execution timeout in seconds (default: 5, max: 30)"`
+	Script    string         `json:"script" jsonschema:"Lua script code to execute"`
+	Variables map[string]any `json:"variables,omitempty" jsonschema:"Variables to pass to the script (accessible as globals)"`
+	Timeout   int            `json:"timeout,omitempty" jsonschema:"Execution timeout in seconds (default: 5, max: 30)"`
 }
 
 // Result represents the result of the Lua script tool

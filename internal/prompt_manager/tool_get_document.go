@@ -8,7 +8,7 @@ import (
 // GetDocumentArgs represents the arguments for the get_document tool.
 type GetDocumentArgs struct {
 	// Path is the document path relative to docs directory (e.g., 'api/reference.md')
-	Path string `json:"path" jsonschema:"required" jsonschema_description:"Document path relative to docs dir"`
+	Path string `json:"path" jsonschema:"Document path relative to docs dir (e.g. 'api/reference.md')"`
 }
 
 // GetDocumentResult represents the result of the get_document tool.
