@@ -2,6 +2,7 @@ package storage_manager //nolint:revive // var-naming: using underscores for dom
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
@@ -14,11 +15,13 @@ const (
 	BackendLocal BackendType = "local"
 	// BackendS3 uses AWS S3 for storage.
 	BackendS3 BackendType = "s3"
+	// BackendGit uses a git repository for storage.
+	BackendGit BackendType = "git"
 )
 
 // Config holds the configuration for the StorageManager.
 type Config struct {
-	// Backend specifies the storage backend type (local or s3).
+	// Backend specifies the storage backend type (local, s3, or git).
 	Backend BackendType
 
 	// LocalConfig holds configuration for local filesystem storage.
@@ -26,6 +29,9 @@ type Config struct {
 
 	// S3Config holds configuration for S3 storage.
 	S3Config *S3Config
+
+	// GitConfig holds configuration for git repository storage.
+	GitConfig *GitConfig
 }
 
 // LocalConfig holds configuration for local filesystem storage.
@@ -42,6 +48,36 @@ type S3Config struct {
 	Prefix string
 	// Client is the AWS S3 client. If nil, a default client will be created.
 	Client *s3.Client
+}
+
+// GitConfig holds configuration for git repository storage.
+type GitConfig struct {
+	// Path is the path to the git repository.
+	Path string
+	// AuthorName is the name used for commits (defaults to "GitFileProvider").
+	AuthorName string
+	// AuthorEmail is the email used for commits (defaults to "gitfileprovider@localhost").
+	AuthorEmail string
+	// InitIfMissing initializes a new repo if the path doesn't contain one.
+	InitIfMissing bool
+
+	// RemoteURL is the URL of the remote repository (SSH or HTTPS).
+	// If set and the local repo doesn't exist, it will be cloned.
+	RemoteURL string
+	// Branch is the branch to use (defaults to "main").
+	Branch string
+	// PushDebounceDelay is the delay before pushing after the last commit.
+	// Defaults to 5 seconds.
+	PushDebounceDelay time.Duration
+
+	// AuthUsername is the username for HTTPS authentication.
+	AuthUsername string
+	// AuthPassword is the password or token for HTTPS authentication.
+	AuthPassword string
+	// SSHKeyPath is the path to an SSH private key file.
+	SSHKeyPath string
+	// SSHKeyPassword is the password for an encrypted SSH key (optional).
+	SSHKeyPassword string
 }
 
 // StorageManager provides unified storage management for the application.
@@ -78,6 +114,40 @@ func New(config Config) (*StorageManager, error) {
 		}
 		s3Client := NewAWSS3Client(config.S3Config.Client)
 		provider = NewS3FileProvider(config.S3Config.Bucket, config.S3Config.Prefix, s3Client)
+
+	case BackendGit:
+		if config.GitConfig == nil {
+			return nil, fmt.Errorf("git config is required for git backend")
+		}
+		if config.GitConfig.Path == "" {
+			return nil, fmt.Errorf("path is required for git backend")
+		}
+
+		// Build auth config if credentials are provided
+		var authConfig *GitAuthConfig
+		if config.GitConfig.AuthUsername != "" || config.GitConfig.SSHKeyPath != "" {
+			authConfig = &GitAuthConfig{
+				Username:       config.GitConfig.AuthUsername,
+				Password:       config.GitConfig.AuthPassword,
+				SSHKeyPath:     config.GitConfig.SSHKeyPath,
+				SSHKeyPassword: config.GitConfig.SSHKeyPassword,
+			}
+		}
+
+		var err error
+		provider, err = NewGitFileProvider(GitProviderOptions{
+			Path:              config.GitConfig.Path,
+			AuthorName:        config.GitConfig.AuthorName,
+			AuthorEmail:       config.GitConfig.AuthorEmail,
+			InitIfMissing:     config.GitConfig.InitIfMissing,
+			RemoteURL:         config.GitConfig.RemoteURL,
+			Branch:            config.GitConfig.Branch,
+			Auth:              authConfig,
+			PushDebounceDelay: config.GitConfig.PushDebounceDelay,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create git provider: %w", err)
+		}
 
 	default:
 		return nil, fmt.Errorf("unsupported backend type: %s", config.Backend)
@@ -120,4 +190,18 @@ func (m *StorageManager) GetRootProvider() FileProvider {
 // Backend returns the configured backend type.
 func (m *StorageManager) Backend() BackendType {
 	return m.config.Backend
+}
+
+// Closeable is an interface for providers that need cleanup on shutdown.
+type Closeable interface {
+	Close() error
+}
+
+// Close releases resources held by the storage provider.
+// For git providers, this flushes any pending push operations.
+func (m *StorageManager) Close() error {
+	if closer, ok := m.provider.(Closeable); ok {
+		return closer.Close()
+	}
+	return nil
 }
