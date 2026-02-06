@@ -53,6 +53,9 @@ type AppConfig struct {
 	// Telegram configuration
 	Telegram TelegramConfig `yaml:"telegram"`
 
+	// Search tool configuration
+	Search SearchConfig `yaml:"search"`
+
 	// Storage configuration (persistence layer)
 	Storage StorageConfig `yaml:"storage"`
 
@@ -340,6 +343,11 @@ func (c *AppConfig) LogConfig(log logger.Logger) {
 	// Log Telegram configuration
 	if c.Telegram.Enabled() {
 		log.Info("Telegram integration enabled")
+	}
+
+	// Log search tool configuration
+	if c.Search.Enabled() {
+		log.Info("Web search tool enabled")
 	}
 
 	// Log storage configuration
