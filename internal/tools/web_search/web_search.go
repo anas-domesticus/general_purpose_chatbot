@@ -22,20 +22,20 @@ type Config struct {
 
 // Args represents the arguments for the web search tool
 type Args struct {
-	Query            string `json:"query" jsonschema:"required" jsonschema_description:"The search query to execute"`
-	MaxResults       int    `json:"max_results,omitempty" jsonschema_description:"Maximum number of results to return (default: 5, max: 10)"`
-	IncludeAnswer    bool   `json:"include_answer,omitempty" jsonschema_description:"Include an AI-generated answer summarizing the results"`
-	SearchDepth      string `json:"search_depth,omitempty" jsonschema_description:"Search depth: 'basic' for quick results or 'advanced' for comprehensive results (default: basic)"`
-	IncludeDomains   string `json:"include_domains,omitempty" jsonschema_description:"Comma-separated list of domains to include in search results"`
-	ExcludeDomains   string `json:"exclude_domains,omitempty" jsonschema_description:"Comma-separated list of domains to exclude from search results"`
-	IncludeRawContent bool  `json:"include_raw_content,omitempty" jsonschema_description:"Include raw HTML content of the pages"`
+	Query             string `json:"query" jsonschema:"required" jsonschema_description:"The search query to execute"`
+	MaxResults        int    `json:"max_results,omitempty" jsonschema_description:"Maximum number of results (default: 5, max: 10)"`
+	IncludeAnswer     bool   `json:"include_answer,omitempty" jsonschema_description:"Include an AI-generated answer"`
+	SearchDepth       string `json:"search_depth,omitempty" jsonschema_description:"'basic' or 'advanced' (default: basic)"`
+	IncludeDomains    string `json:"include_domains,omitempty" jsonschema_description:"Comma-separated domains to include"`
+	ExcludeDomains    string `json:"exclude_domains,omitempty" jsonschema_description:"Comma-separated domains to exclude"`
+	IncludeRawContent bool   `json:"include_raw_content,omitempty" jsonschema_description:"Include raw HTML content"`
 }
 
 // SearchResult represents a single search result
 type SearchResult struct {
-	Title   string `json:"title"`
-	URL     string `json:"url"`
-	Content string `json:"content"`
+	Title   string  `json:"title"`
+	URL     string  `json:"url"`
+	Content string  `json:"content"`
 	Score   float64 `json:"score,omitempty"`
 }
 
@@ -71,6 +71,112 @@ type tavilyResponse struct {
 	} `json:"results"`
 }
 
+// searchClient handles the HTTP communication with the search API
+type searchClient struct {
+	apiKey  string
+	baseURL string
+	timeout time.Duration
+}
+
+func (c *searchClient) search(ctx tool.Context, args Args) Result {
+	reqBody := c.buildRequest(args)
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return Result{Query: args.Query, Error: fmt.Sprintf("failed to serialize request: %v", err)}
+	}
+
+	body, statusCode, err := c.doRequest(ctx, jsonBody)
+	if err != nil {
+		return Result{Query: args.Query, Error: err.Error()}
+	}
+
+	if statusCode != http.StatusOK {
+		return Result{Query: args.Query, Error: fmt.Sprintf("API error (status %d): %s", statusCode, body)}
+	}
+
+	return c.parseResponse(args.Query, body)
+}
+
+func (c *searchClient) buildRequest(args Args) tavilyRequest {
+	maxResults := args.MaxResults
+	if maxResults <= 0 {
+		maxResults = 5
+	}
+	if maxResults > 10 {
+		maxResults = 10
+	}
+
+	searchDepth := args.SearchDepth
+	if searchDepth == "" {
+		searchDepth = "basic"
+	}
+
+	req := tavilyRequest{
+		APIKey:            c.apiKey,
+		Query:             args.Query,
+		MaxResults:        maxResults,
+		IncludeAnswer:     args.IncludeAnswer,
+		SearchDepth:       searchDepth,
+		IncludeRawContent: args.IncludeRawContent,
+	}
+
+	if args.IncludeDomains != "" {
+		req.IncludeDomains = parseDomains(args.IncludeDomains)
+	}
+	if args.ExcludeDomains != "" {
+		req.ExcludeDomains = parseDomains(args.ExcludeDomains)
+	}
+
+	return req
+}
+
+func (c *searchClient) doRequest(ctx tool.Context, jsonBody []byte) ([]byte, int, error) {
+	client := &http.Client{Timeout: c.timeout}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/search", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, resp.StatusCode, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	return body, resp.StatusCode, nil
+}
+
+func (c *searchClient) parseResponse(query string, body []byte) Result {
+	var tavilyResp tavilyResponse
+	if err := json.Unmarshal(body, &tavilyResp); err != nil {
+		return Result{Query: query, Error: fmt.Sprintf("failed to parse response: %v", err)}
+	}
+
+	results := make([]SearchResult, len(tavilyResp.Results))
+	for i, r := range tavilyResp.Results {
+		results[i] = SearchResult{
+			Title:   r.Title,
+			URL:     r.URL,
+			Content: r.Content,
+			Score:   r.Score,
+		}
+	}
+
+	return Result{
+		Query:   tavilyResp.Query,
+		Answer:  tavilyResp.Answer,
+		Results: results,
+	}
+}
+
 // New creates a new web search tool
 func New(cfg Config) (tool.Tool, error) {
 	if cfg.APIKey == "" {
@@ -85,121 +191,19 @@ func New(cfg Config) (tool.Tool, error) {
 		cfg.Timeout = 30 * time.Second
 	}
 
+	client := &searchClient{
+		apiKey:  cfg.APIKey,
+		baseURL: cfg.BaseURL,
+		timeout: cfg.Timeout,
+	}
+
 	handler := func(ctx tool.Context, args Args) (Result, error) {
-		// Set default values
-		maxResults := args.MaxResults
-		if maxResults <= 0 {
-			maxResults = 5
-		}
-		if maxResults > 10 {
-			maxResults = 10
-		}
-
-		searchDepth := args.SearchDepth
-		if searchDepth == "" {
-			searchDepth = "basic"
-		}
-
-		// Build request
-		reqBody := tavilyRequest{
-			APIKey:            cfg.APIKey,
-			Query:             args.Query,
-			MaxResults:        maxResults,
-			IncludeAnswer:     args.IncludeAnswer,
-			SearchDepth:       searchDepth,
-			IncludeRawContent: args.IncludeRawContent,
-		}
-
-		// Parse domain filters
-		if args.IncludeDomains != "" {
-			reqBody.IncludeDomains = parseDomains(args.IncludeDomains)
-		}
-		if args.ExcludeDomains != "" {
-			reqBody.ExcludeDomains = parseDomains(args.ExcludeDomains)
-		}
-
-		// Serialize request
-		jsonBody, err := json.Marshal(reqBody)
-		if err != nil {
-			return Result{
-				Query: args.Query,
-				Error: fmt.Sprintf("failed to serialize request: %v", err),
-			}, nil
-		}
-
-		// Create HTTP client
-		client := &http.Client{
-			Timeout: cfg.Timeout,
-		}
-
-		// Create request
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.BaseURL+"/search", bytes.NewBuffer(jsonBody))
-		if err != nil {
-			return Result{
-				Query: args.Query,
-				Error: fmt.Sprintf("failed to create request: %v", err),
-			}, nil
-		}
-
-		req.Header.Set("Content-Type", "application/json")
-
-		// Execute request
-		resp, err := client.Do(req)
-		if err != nil {
-			return Result{
-				Query: args.Query,
-				Error: fmt.Sprintf("request failed: %v", err),
-			}, nil
-		}
-		defer func() { _ = resp.Body.Close() }()
-
-		// Read response
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return Result{
-				Query: args.Query,
-				Error: fmt.Sprintf("failed to read response: %v", err),
-			}, nil
-		}
-
-		// Check for errors
-		if resp.StatusCode != http.StatusOK {
-			return Result{
-				Query: args.Query,
-				Error: fmt.Sprintf("API error (status %d): %s", resp.StatusCode, string(body)),
-			}, nil
-		}
-
-		// Parse response
-		var tavilyResp tavilyResponse
-		if err := json.Unmarshal(body, &tavilyResp); err != nil {
-			return Result{
-				Query: args.Query,
-				Error: fmt.Sprintf("failed to parse response: %v", err),
-			}, nil
-		}
-
-		// Convert to result
-		results := make([]SearchResult, len(tavilyResp.Results))
-		for i, r := range tavilyResp.Results {
-			results[i] = SearchResult{
-				Title:   r.Title,
-				URL:     r.URL,
-				Content: r.Content,
-				Score:   r.Score,
-			}
-		}
-
-		return Result{
-			Query:   tavilyResp.Query,
-			Answer:  tavilyResp.Answer,
-			Results: results,
-		}, nil
+		return client.search(ctx, args), nil
 	}
 
 	return functiontool.New(functiontool.Config{
 		Name:        "web_search",
-		Description: "Search the web for current information. Use this tool to find up-to-date information about any topic, news, facts, or data that may not be in your training data.",
+		Description: "Search the web for current information about any topic, news, or facts.",
 	}, handler)
 }
 
