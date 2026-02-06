@@ -190,7 +190,10 @@ func createMCPToolsets(mcpConfig config.MCPConfig, log logger.Logger) []tool.Too
 			continue
 		}
 
-		toolsets = append(toolsets, mcpToolset)
+		// Wrap the toolset to prefix tool names with server name
+		// This prevents conflicts when multiple MCP servers expose tools with the same name
+		prefixedToolset := newPrefixedMCPToolset(serverName, mcpToolset)
+		toolsets = append(toolsets, prefixedToolset)
 		log.Info("Successfully created MCP toolset", logger.StringField("server", serverName))
 	}
 
