@@ -1,4 +1,4 @@
-package memory_service
+package memory_service //nolint:revive // var-naming: using underscores for domain clarity
 
 import (
 	"google.golang.org/genai"

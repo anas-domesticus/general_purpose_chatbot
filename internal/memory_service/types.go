@@ -1,5 +1,5 @@
 // Package memory_service provides persistent memory storage for the ADK memory interface.
-package memory_service
+package memory_service //nolint:revive // var-naming: using underscores for domain clarity
 
 import (
 	"time"
