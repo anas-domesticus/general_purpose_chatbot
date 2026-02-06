@@ -18,9 +18,7 @@ type AppConfig struct {
 	Environment string `env:"ENVIRONMENT" yaml:"environment" default:"development"`
 
 	// Server configuration
-	Port           int           `env:"PORT" yaml:"port" default:"8080"`
 	RequestTimeout time.Duration `env:"REQUEST_TIMEOUT" yaml:"request_timeout" default:"30s"`
-	IdleTimeout    time.Duration `env:"IDLE_TIMEOUT" yaml:"idle_timeout" default:"60s"`
 
 	// LLM Provider configuration
 	LLM LLMConfig `yaml:"llm"`
@@ -108,11 +106,6 @@ func (c *AppConfig) Validate() error {
 	// Validate log format
 	if c.Logging.Format != "json" && c.Logging.Format != "text" {
 		result = multierror.Append(result, fmt.Errorf("log_format must be either 'json' or 'text', got %q", c.Logging.Format))
-	}
-
-	// Validate port range
-	if c.Port < 1 || c.Port > 65535 {
-		result = multierror.Append(result, fmt.Errorf("port must be between 1 and 65535, got %d", c.Port))
 	}
 
 	// Validate timeout values
@@ -322,7 +315,6 @@ func (c *AppConfig) LogConfig(log logger.Logger) {
 		logger.StringField("service_name", c.ServiceName),
 		logger.StringField("version", c.Version),
 		logger.StringField("environment", c.Environment),
-		logger.IntField("port", c.Port),
 		logger.StringField("llm_provider", c.LLM.Provider),
 		logger.StringField("llm_model", c.GetLLMModel()),
 		logger.StringField("log_level", c.Logging.Level),
