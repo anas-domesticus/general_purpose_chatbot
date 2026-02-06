@@ -2,6 +2,7 @@
 package agents
 
 import (
+	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/tool"
@@ -17,14 +18,16 @@ const MCPToolPrefix = "mcp__"
 type prefixedMCPToolset struct {
 	serverName string
 	inner      tool.Toolset
+	log        logger.Logger
 }
 
 // newPrefixedMCPToolset creates a new toolset wrapper that prefixes all tools
 // from the given toolset with the server name.
-func newPrefixedMCPToolset(serverName string, inner tool.Toolset) tool.Toolset {
+func newPrefixedMCPToolset(serverName string, inner tool.Toolset, log logger.Logger) tool.Toolset {
 	return &prefixedMCPToolset{
 		serverName: serverName,
 		inner:      inner,
+		log:        log,
 	}
 }
 
@@ -34,10 +37,16 @@ func (p *prefixedMCPToolset) Name() string {
 }
 
 // Tools returns the list of tools with prefixed names.
+// If the inner toolset fails to return tools (e.g., due to connection issues),
+// this method logs a warning and returns an empty list instead of propagating
+// the error. This ensures a single failing MCP server doesn't break the entire agent.
 func (p *prefixedMCPToolset) Tools(ctx agent.ReadonlyContext) ([]tool.Tool, error) {
 	tools, err := p.inner.Tools(ctx)
 	if err != nil {
-		return nil, err
+		p.log.Warn("Failed to list tools from MCP server, skipping toolset",
+			logger.StringField("server", p.serverName),
+			logger.ErrorField(err))
+		return []tool.Tool{}, nil
 	}
 
 	prefixedTools := make([]tool.Tool, len(tools))
