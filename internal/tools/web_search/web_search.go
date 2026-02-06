@@ -70,7 +70,7 @@ type Config struct {
 // Args represents the arguments for the web search tool
 type Args struct {
 	Query      string `json:"query" jsonschema:"required" jsonschema_description:"The search query to execute"`
-	Engine     string `json:"engine,omitempty" jsonschema_description:"Search engine (default: google)"`
+	Engine     string `json:"engine,omitempty" jsonschema_description:"Search engine (default: google). Options: google, google_news, google_images, google_videos, google_maps, google_shopping, google_scholar, google_finance, google_jobs, google_patents, google_trends, google_flights, google_hotels, google_lens, google_autocomplete, google_play, google_events, bing, bing_images, bing_videos, baidu, duckduckgo, yahoo, yandex, naver, amazon, ebay, walmart, shein, airbnb, tripadvisor, youtube"`
 	NumResults int    `json:"num_results,omitempty" jsonschema_description:"Number of results (default: 10, max: 100)"`
 	Page       int    `json:"page,omitempty" jsonschema_description:"Page number for pagination (default: 1)"`
 	Location   string `json:"location,omitempty" jsonschema_description:"Location for localized results (e.g. 'New York')"`
