@@ -9,7 +9,7 @@ import (
 
 // RetrieveSkillArgs represents the arguments for the retrieve skill tool.
 type RetrieveSkillArgs struct {
-	Name string `json:"name" jsonschema:"required" jsonschema_description:"The exact name of the skill to retrieve."`
+	Name string `json:"name" jsonschema:"The exact name of the skill to retrieve."`
 }
 
 // RetrieveSkillResult represents the result of the retrieve skill tool.
