@@ -75,6 +75,16 @@ func TestSearchClient_BuildRequestURL(t *testing.T) {
 			contains: []string{"safe=active"},
 		},
 		{
+			name:     "with custom engine",
+			args:     Args{Query: "test", Engine: "bing"},
+			contains: []string{"engine=bing"},
+		},
+		{
+			name:     "defaults to google engine",
+			args:     Args{Query: "test"},
+			contains: []string{"engine=google"},
+		},
+		{
 			name:     "caps num results at 100",
 			args:     Args{Query: "test", NumResults: 200},
 			contains: []string{"num=100"},
