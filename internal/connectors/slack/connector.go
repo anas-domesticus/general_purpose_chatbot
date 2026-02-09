@@ -239,23 +239,31 @@ func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.M
 
 // handleAppMentionEvent processes @bot mentions in channels
 func (c *Connector) handleAppMentionEvent(ctx context.Context, event *slackevents.AppMentionEvent) error {
+	// Determine thread root: if already in a thread use that TS, otherwise this message starts the thread
+	threadTS := event.ThreadTimeStamp
+	if threadTS == "" {
+		threadTS = event.TimeStamp
+	}
+
 	c.logger.Info("Processing mention",
 		logger.StringField("user_id", event.User),
-		logger.StringField("channel", event.Channel))
+		logger.StringField("channel", event.Channel),
+		logger.StringField("thread_ts", threadTS))
 
 	// Remove the bot mention from the message text
 	cleanText := c.removeBotMention(event.Text)
 
-	// Send message to agent via executor
-	// Get or create session for this user
-	sessionID, err := c.sessionMgr.GetOrCreateSession(ctx, "slack", event.User, event.Channel)
+	// Thread-scoped session: all users in the same thread share one session
+	scopeKey := fmt.Sprintf("thread:%s:%s", event.Channel, threadTS)
+
+	sessionID, err := c.sessionMgr.GetOrCreateSession(ctx, "slack", scopeKey, event.Channel)
 	if err != nil {
 		c.logger.Error("Error getting session", logger.ErrorField(err))
 		return fmt.Errorf("failed to get session: %w", err)
 	}
 
 	response, err := c.executor.Execute(ctx, executor.MessageRequest{
-		UserID:    event.User,
+		UserID:    scopeKey,
 		SessionID: sessionID,
 		Message:   cleanText,
 	}, c, func() string {
@@ -263,14 +271,17 @@ func (c *Connector) handleAppMentionEvent(ctx context.Context, event *slackevent
 	})
 	if err != nil {
 		c.logger.Error("Error from executor", logger.ErrorField(err))
-		// Send error message to channel
-		_, _, err = c.client.PostMessage(event.Channel, slack.MsgOptionText("Sorry, I encountered an error processing your message.", false))
+		_, _, err = c.client.PostMessage(event.Channel,
+			slack.MsgOptionText("Sorry, I encountered an error processing your message.", false),
+			slack.MsgOptionTS(threadTS))
 		return err
 	}
 
-	// Send response back to Slack
+	// Send response back in the thread
 	if response.Text != "" {
-		_, _, err = c.client.PostMessage(event.Channel, slack.MsgOptionText(response.Text, false))
+		_, _, err = c.client.PostMessage(event.Channel,
+			slack.MsgOptionText(response.Text, false),
+			slack.MsgOptionTS(threadTS))
 		if err != nil {
 			c.logger.Error("Error sending message to Slack", logger.ErrorField(err))
 			return err
