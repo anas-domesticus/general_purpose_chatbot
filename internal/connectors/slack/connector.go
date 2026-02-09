@@ -24,6 +24,15 @@ type Connector struct {
 	sessionMgr session_manager.Manager
 	connected  bool
 	mu         sync.RWMutex
+
+	// Cached bot identity (lazy-initialized via ensureBotIdentity)
+	botUserID string
+	botBotID  string
+	initOnce  sync.Once
+
+	// User display name cache to avoid repeated API calls
+	userNameCache map[string]string
+	cacheMu       sync.RWMutex
 }
 
 // Config holds configuration for the Slack connector
@@ -64,11 +73,12 @@ func NewConnector(config Config, exec *executor.Executor, sessionMgr session_man
 	slackLogger := config.Logger.WithFields(logger.StringField("connector", "slack"))
 
 	connector := &Connector{
-		client:     client,
-		socketMode: socketMode,
-		executor:   exec,
-		logger:     slackLogger,
-		sessionMgr: sessionMgr,
+		client:        client,
+		socketMode:    socketMode,
+		executor:      exec,
+		logger:        slackLogger,
+		sessionMgr:    sessionMgr,
+		userNameCache: make(map[string]string),
 	}
 
 	// Setup slash command handlers
@@ -253,6 +263,16 @@ func (c *Connector) handleAppMentionEvent(ctx context.Context, event *slackevent
 	// Remove the bot mention from the message text
 	cleanText := c.removeBotMention(event.Text)
 
+	// Fetch thread context if this is a reply in an existing thread
+	threadContext := c.getThreadContext(ctx, event.Channel, threadTS, event.TimeStamp)
+
+	// Compose the full message with thread context if available
+	fullMessage := cleanText
+	if threadContext != "" {
+		userName := c.resolveUserName(ctx, event.User, "")
+		fullMessage = fmt.Sprintf("%s\n\n%s's message to you: %s", threadContext, userName, cleanText)
+	}
+
 	// Thread-scoped session: all users in the same thread share one session
 	scopeKey := fmt.Sprintf("thread:%s:%s", event.Channel, threadTS)
 
@@ -265,7 +285,7 @@ func (c *Connector) handleAppMentionEvent(ctx context.Context, event *slackevent
 	response, err := c.executor.Execute(ctx, executor.MessageRequest{
 		UserID:    scopeKey,
 		SessionID: sessionID,
-		Message:   cleanText,
+		Message:   fullMessage,
 	}, c, func() string {
 		return c.GetUserInfo(ctx, event.User)
 	})
@@ -306,6 +326,111 @@ func (c *Connector) removeBotMention(text string) string {
 		}
 	}
 	return cleaned
+}
+
+// ensureBotIdentity lazily fetches and caches the bot's own user ID and bot ID.
+func (c *Connector) ensureBotIdentity() {
+	c.initOnce.Do(func() {
+		auth, err := c.client.AuthTest()
+		if err != nil {
+			c.logger.Warn("Failed to cache bot identity", logger.ErrorField(err))
+			return
+		}
+		c.botUserID = auth.UserID
+		c.botBotID = auth.BotID
+	})
+}
+
+// resolveUserName resolves a Slack user ID or bot ID to a display name.
+func (c *Connector) resolveUserName(ctx context.Context, userID, botID string) string {
+	c.ensureBotIdentity()
+
+	if botID != "" && botID == c.botBotID {
+		return "You (assistant)"
+	}
+	if botID != "" {
+		return "Bot"
+	}
+	if userID == "" {
+		return "Unknown"
+	}
+
+	// Check cache
+	c.cacheMu.RLock()
+	if name, ok := c.userNameCache[userID]; ok {
+		c.cacheMu.RUnlock()
+		return name
+	}
+	c.cacheMu.RUnlock()
+
+	// Fetch from API
+	user, err := c.client.GetUserInfoContext(ctx, userID)
+	if err != nil {
+		return fmt.Sprintf("<@%s>", userID)
+	}
+
+	name := user.Name
+	if user.Profile.DisplayName != "" {
+		name = user.Profile.DisplayName
+	} else if user.RealName != "" {
+		name = user.RealName
+	}
+
+	c.cacheMu.Lock()
+	c.userNameCache[userID] = name
+	c.cacheMu.Unlock()
+
+	return name
+}
+
+// getThreadContext fetches thread history and formats it as context for the LLM.
+// Returns empty string if this is a new thread (no prior messages) or on error.
+func (c *Connector) getThreadContext(ctx context.Context, channelID, threadTS, currentMsgTS string) string {
+	// If this message starts the thread, there's no prior context
+	if threadTS == currentMsgTS {
+		return ""
+	}
+
+	msgs, hasMore, _, err := c.client.GetConversationRepliesContext(ctx, &slack.GetConversationRepliesParameters{
+		ChannelID: channelID,
+		Timestamp: threadTS,
+		Limit:     50,
+	})
+	if err != nil {
+		c.logger.Warn("Failed to fetch thread replies",
+			logger.StringField("channel", channelID),
+			logger.StringField("thread_ts", threadTS),
+			logger.ErrorField(err))
+		return ""
+	}
+
+	if len(msgs) <= 1 {
+		return ""
+	}
+
+	var threadContext strings.Builder
+	threadContext.WriteString("[Thread Context - Previous messages in this thread]\n")
+
+	if hasMore {
+		threadContext.WriteString("[...earlier messages omitted, showing most recent messages]\n")
+	}
+
+	for _, msg := range msgs {
+		if msg.Timestamp == currentMsgTS {
+			continue
+		}
+
+		displayName := c.resolveUserName(ctx, msg.User, msg.BotID)
+		text := c.removeBotMention(msg.Text)
+		if text == "" {
+			continue
+		}
+
+		threadContext.WriteString(fmt.Sprintf("%s: %s\n", displayName, text))
+	}
+
+	threadContext.WriteString("[End of Thread Context]")
+	return threadContext.String()
 }
 
 // Stop gracefully stops the connector
