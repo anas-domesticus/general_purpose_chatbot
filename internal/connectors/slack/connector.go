@@ -404,7 +404,7 @@ func (c *Connector) getThreadContext(ctx context.Context, channelID, threadTS, c
 		return ""
 	}
 
-	if len(msgs) <= 1 {
+	if len(msgs) == 0 {
 		return ""
 	}
 
