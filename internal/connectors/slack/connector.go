@@ -139,8 +139,41 @@ func (c *Connector) Start(ctx context.Context) error {
 			case socketmode.EventTypeSlashCommand:
 				c.handleSlashCommand(ctx, envelope)
 
+			case socketmode.EventTypeIncomingError:
+				if err, ok := envelope.Data.(*slack.IncomingEventError); ok {
+					c.logger.Warn("Incoming event error from Slack", logger.ErrorField(err.ErrorObj))
+				} else {
+					c.logger.Warn("Incoming event error from Slack", logger.StringField("data", fmt.Sprintf("%+v", envelope.Data)))
+				}
+
+			case socketmode.EventTypeErrorWriteFailed:
+				if err, ok := envelope.Data.(*socketmode.ErrorWriteFailed); ok {
+					c.logger.Error("Failed to write to Slack WebSocket", logger.ErrorField(err.Cause))
+				} else {
+					c.logger.Error("Failed to write to Slack WebSocket", logger.StringField("data", fmt.Sprintf("%+v", envelope.Data)))
+				}
+
+			case socketmode.EventTypeErrorBadMessage:
+				if err, ok := envelope.Data.(*socketmode.ErrorBadMessage); ok {
+					c.logger.Warn("Bad message received from Slack", logger.ErrorField(err.Cause), logger.StringField("message", string(err.Message)))
+				} else {
+					c.logger.Warn("Bad message received from Slack", logger.StringField("data", fmt.Sprintf("%+v", envelope.Data)))
+				}
+
+			case socketmode.EventTypeInvalidAuth:
+				c.logger.Error("Invalid authentication for Slack Socket Mode")
+
+			case socketmode.EventTypeDisconnect:
+				c.logger.Warn("Disconnected from Slack Socket Mode")
+				c.mu.Lock()
+				c.connected = false
+				c.mu.Unlock()
+
 			default:
-				c.logger.Warn("Unsupported event type received", logger.StringField("event_type", string(envelope.Type)))
+				c.logger.Warn("Unsupported event type received",
+					logger.StringField("event_type", string(envelope.Type)),
+					logger.StringField("data", fmt.Sprintf("%+v", envelope.Data)),
+				)
 			}
 		}
 	}()
