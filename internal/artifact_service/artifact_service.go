@@ -1,6 +1,6 @@
 // Package artifact_service provides an implementation of the ADK artifact.Service interface.
 // It supports both local filesystem and S3 storage backends through the FileProvider abstraction.
-package artifact_service
+package artifact_service //nolint:revive // var-naming: using underscores for domain clarity
 
 import (
 	"context"
