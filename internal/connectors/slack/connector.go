@@ -383,6 +383,171 @@ func (c *Connector) resolveUserName(ctx context.Context, userID, botID string) s
 	return name
 }
 
+// extractMessageText extracts readable text from a Slack message, falling back
+// through Text → Attachments → Blocks → Files when the primary text field is empty.
+// This handles bot/integration messages (e.g. AlertManager) that put content in
+// attachments or blocks rather than the plain text field.
+func extractMessageText(msg slack.Message) string {
+	if msg.Text != "" {
+		return msg.Text
+	}
+
+	var parts []string
+
+	// Try attachments (common for webhooks and integrations)
+	for _, att := range msg.Attachments {
+		if att.Pretext != "" {
+			parts = append(parts, att.Pretext)
+		}
+		if att.Title != "" {
+			parts = append(parts, att.Title)
+		}
+		if att.Text != "" {
+			parts = append(parts, att.Text)
+		}
+		for _, field := range att.Fields {
+			entry := field.Title
+			if field.Value != "" {
+				if entry != "" {
+					entry += ": "
+				}
+				entry += field.Value
+			}
+			if entry != "" {
+				parts = append(parts, entry)
+			}
+		}
+		if len(parts) == 0 && att.Fallback != "" {
+			parts = append(parts, att.Fallback)
+		}
+	}
+	if len(parts) > 0 {
+		return strings.Join(parts, "\n")
+	}
+
+	// Try blocks (Block Kit)
+	for _, block := range msg.Blocks.BlockSet {
+		switch b := block.(type) {
+		case *slack.HeaderBlock:
+			if b.Text != nil && b.Text.Text != "" {
+				parts = append(parts, b.Text.Text)
+			}
+		case *slack.SectionBlock:
+			if b.Text != nil && b.Text.Text != "" {
+				parts = append(parts, b.Text.Text)
+			}
+			for _, field := range b.Fields {
+				if field != nil && field.Text != "" {
+					parts = append(parts, field.Text)
+				}
+			}
+		case *slack.RichTextBlock:
+			parts = append(parts, extractRichTextBlock(b)...)
+		}
+	}
+	if len(parts) > 0 {
+		return strings.Join(parts, "\n")
+	}
+
+	// Try files (file shares with no accompanying text)
+	for _, file := range msg.Files {
+		label := file.Title
+		if label == "" {
+			label = file.Name
+		}
+		if label != "" {
+			parts = append(parts, fmt.Sprintf("[File: %s]", label))
+		}
+	}
+	if len(parts) > 0 {
+		return strings.Join(parts, "\n")
+	}
+
+	return ""
+}
+
+// extractRichTextBlock recursively extracts plain text from a RichTextBlock's elements.
+func extractRichTextBlock(block *slack.RichTextBlock) []string {
+	var parts []string
+	for _, elem := range block.Elements {
+		switch el := elem.(type) {
+		case *slack.RichTextSection:
+			var sectionText strings.Builder
+			for _, se := range el.Elements {
+				switch ste := se.(type) {
+				case *slack.RichTextSectionTextElement:
+					sectionText.WriteString(ste.Text)
+				case *slack.RichTextSectionLinkElement:
+					if ste.Text != "" {
+						sectionText.WriteString(ste.Text)
+					} else {
+						sectionText.WriteString(ste.URL)
+					}
+				}
+			}
+			if sectionText.Len() > 0 {
+				parts = append(parts, sectionText.String())
+			}
+		case *slack.RichTextList:
+			for _, item := range el.Elements {
+				if section, ok := item.(*slack.RichTextSection); ok {
+					var itemText strings.Builder
+					for _, se := range section.Elements {
+						switch ste := se.(type) {
+						case *slack.RichTextSectionTextElement:
+							itemText.WriteString(ste.Text)
+						case *slack.RichTextSectionLinkElement:
+							if ste.Text != "" {
+								itemText.WriteString(ste.Text)
+							} else {
+								itemText.WriteString(ste.URL)
+							}
+						}
+					}
+					if itemText.Len() > 0 {
+						parts = append(parts, "- "+itemText.String())
+					}
+				}
+			}
+		case *slack.RichTextQuote:
+			var quoteText strings.Builder
+			for _, se := range el.Elements {
+				switch ste := se.(type) {
+				case *slack.RichTextSectionTextElement:
+					quoteText.WriteString(ste.Text)
+				case *slack.RichTextSectionLinkElement:
+					if ste.Text != "" {
+						quoteText.WriteString(ste.Text)
+					} else {
+						quoteText.WriteString(ste.URL)
+					}
+				}
+			}
+			if quoteText.Len() > 0 {
+				parts = append(parts, "> "+quoteText.String())
+			}
+		case *slack.RichTextPreformatted:
+			var codeText strings.Builder
+			for _, se := range el.Elements {
+				switch ste := se.(type) {
+				case *slack.RichTextSectionTextElement:
+					codeText.WriteString(ste.Text)
+				case *slack.RichTextSectionLinkElement:
+					if ste.Text != "" {
+						codeText.WriteString(ste.Text)
+					} else {
+						codeText.WriteString(ste.URL)
+					}
+				}
+			}
+			if codeText.Len() > 0 {
+				parts = append(parts, "```\n"+codeText.String()+"\n```")
+			}
+		}
+	}
+	return parts
+}
+
 // getThreadContext fetches thread history and formats it as context for the LLM.
 // Returns empty string if this is a new thread (no prior messages) or on error.
 func (c *Connector) getThreadContext(ctx context.Context, channelID, threadTS, currentMsgTS string) string {
@@ -415,18 +580,24 @@ func (c *Connector) getThreadContext(ctx context.Context, channelID, threadTS, c
 		threadContext.WriteString("[...earlier messages omitted, showing most recent messages]\n")
 	}
 
+	hasContent := false
 	for _, msg := range msgs {
 		if msg.Timestamp == currentMsgTS {
 			continue
 		}
 
 		displayName := c.resolveUserName(ctx, msg.User, msg.BotID)
-		text := c.removeBotMention(msg.Text)
+		text := c.removeBotMention(extractMessageText(msg))
 		if text == "" {
 			continue
 		}
 
 		threadContext.WriteString(fmt.Sprintf("%s: %s\n", displayName, text))
+		hasContent = true
+	}
+
+	if !hasContent {
+		return ""
 	}
 
 	threadContext.WriteString("[End of Thread Context]")
