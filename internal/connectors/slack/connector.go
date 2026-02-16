@@ -3,8 +3,10 @@ package slack
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/executor"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/session_manager"
@@ -612,6 +614,20 @@ func (c *Connector) fetchFullMessageText(ctx context.Context, channelID, timesta
 	return fallbackText
 }
 
+// formatSlackTimestamp converts a Slack timestamp (e.g. "1234567890.123456") to
+// a human-readable format like "[2026-02-16 09:12 UTC]".
+func formatSlackTimestamp(ts string) string {
+	parts := strings.SplitN(ts, ".", 2)
+	if len(parts) == 0 {
+		return ""
+	}
+	sec, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return ""
+	}
+	return time.Unix(sec, 0).UTC().Format("[2006-01-02 15:04 UTC]")
+}
+
 // getThreadContext fetches thread history and formats it as context for the LLM.
 // Returns empty string if this is a new thread (no prior messages) or on error.
 func (c *Connector) getThreadContext(ctx context.Context, channelID, threadTS, currentMsgTS string) string {
@@ -656,7 +672,11 @@ func (c *Connector) getThreadContext(ctx context.Context, channelID, threadTS, c
 			continue
 		}
 
-		threadContext.WriteString(fmt.Sprintf("%s: %s\n", displayName, text))
+		if ts := formatSlackTimestamp(msg.Timestamp); ts != "" {
+			threadContext.WriteString(fmt.Sprintf("%s %s: %s\n", ts, displayName, text))
+		} else {
+			threadContext.WriteString(fmt.Sprintf("%s: %s\n", displayName, text))
+		}
 		hasContent = true
 	}
 
