@@ -375,8 +375,38 @@ func (s *Server) createStorageManager(ctx context.Context) (*storage_manager.Sto
 			},
 		})
 
+	case "git":
+		s.log.Info("Using git-based storage",
+			logger.StringField("path", cfg.GitPath),
+			logger.StringField("remote", cfg.GitRemoteURL),
+			logger.StringField("branch", cfg.GitBranch))
+
+		if cfg.GitPath == "" {
+			return nil, fmt.Errorf("git path is required when using git storage")
+		}
+
+		// Determine if we should init or clone
+		initIfMissing := cfg.GitRemoteURL == "" // Only init if no remote (otherwise clone)
+
+		return storage_manager.New(storage_manager.Config{
+			Backend: storage_manager.BackendGit,
+			GitConfig: &storage_manager.GitConfig{
+				Path:              cfg.GitPath,
+				AuthorName:        cfg.GitAuthorName,
+				AuthorEmail:       cfg.GitAuthorEmail,
+				InitIfMissing:     initIfMissing,
+				RemoteURL:         cfg.GitRemoteURL,
+				Branch:            cfg.GitBranch,
+				PushDebounceDelay: cfg.GitPushDebounce,
+				AuthUsername:      cfg.GitAuthUsername,
+				AuthPassword:      cfg.GitAuthPassword,
+				SSHKeyPath:        cfg.GitSSHKeyPath,
+				SSHKeyPassword:    cfg.GitSSHKeyPassword,
+			},
+		})
+
 	default:
-		return nil, fmt.Errorf("unsupported storage backend: %s (must be 'local' or 's3')", cfg.Backend)
+		return nil, fmt.Errorf("unsupported storage backend: %s (must be 'local', 's3', or 'git')", cfg.Backend)
 	}
 }
 
@@ -483,6 +513,13 @@ func (s *Server) setupGracefulShutdown() {
 	go func() {
 		sig := <-sigChan
 		s.log.Info("Received shutdown signal", logger.StringField("signal", sig.String()))
+
+		// Close storage manager to flush pending operations (e.g., git push)
+		if s.storageManager != nil {
+			if err := s.storageManager.Close(); err != nil {
+				s.log.Error("Failed to close storage manager", logger.ErrorField(err))
+			}
+		}
 
 		// Start graceful shutdown
 		if s.cancel != nil {
