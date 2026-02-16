@@ -293,8 +293,9 @@ func (c *Connector) handleAppMentionEvent(ctx context.Context, event *slackevent
 		logger.StringField("channel", event.Channel),
 		logger.StringField("thread_ts", threadTS))
 
-	// Remove the bot mention from the message text
-	cleanText := c.removeBotMention(event.Text)
+	// Fetch the full message from the API so we get attachments, blocks, and files
+	// (the AppMentionEvent only carries the plain Text field).
+	cleanText := c.removeBotMention(c.fetchFullMessageText(ctx, event.Channel, event.TimeStamp, event.Text))
 
 	// Fetch thread context if this is a reply in an existing thread
 	threadContext := c.getThreadContext(ctx, event.Channel, threadTS, event.TimeStamp)
@@ -579,6 +580,36 @@ func extractRichTextBlock(block *slack.RichTextBlock) []string {
 		}
 	}
 	return parts
+}
+
+// fetchFullMessageText retrieves the complete Slack message (with attachments, blocks, files)
+// for a given channel and timestamp, and extracts readable text from it.
+// Falls back to fallbackText if the API call fails or no richer content is found.
+func (c *Connector) fetchFullMessageText(ctx context.Context, channelID, timestamp, fallbackText string) string {
+	msgs, _, _, err := c.client.GetConversationRepliesContext(ctx, &slack.GetConversationRepliesParameters{
+		ChannelID: channelID,
+		Timestamp: timestamp,
+		Limit:     1,
+		Inclusive: true,
+	})
+	if err != nil {
+		c.logger.Warn("Failed to fetch full message, using event text",
+			logger.StringField("channel", channelID),
+			logger.StringField("ts", timestamp),
+			logger.ErrorField(err))
+		return fallbackText
+	}
+
+	for _, msg := range msgs {
+		if msg.Timestamp == timestamp {
+			if text := extractMessageText(msg); text != "" {
+				return text
+			}
+			return fallbackText
+		}
+	}
+
+	return fallbackText
 }
 
 // getThreadContext fetches thread history and formats it as context for the LLM.
