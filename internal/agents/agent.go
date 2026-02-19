@@ -18,7 +18,6 @@ import (
 	"google.golang.org/adk/agent/llmagent"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/tool"
-	"google.golang.org/adk/tool/mcptoolset"
 )
 
 // PromptProvider defines the interface for retrieving prompts.
@@ -179,16 +178,12 @@ func createMCPToolsets(mcpConfig config.MCPConfig, log logger.Logger) []tool.Too
 			continue
 		}
 
-		// Create MCP toolset using mcptoolset.New
-		mcpToolset, err := mcptoolset.New(mcptoolset.Config{
-			Transport: transport,
-		})
-		if err != nil {
-			log.Warn("Failed to create MCP toolset",
-				logger.StringField("server", serverName),
-				logger.ErrorField(err))
-			continue
-		}
+		// Create custom MCP toolset that handles all content types.
+		// The ADK's mcptoolset.New only processes TextContent and silently drops
+		// EmbeddedResource, ImageContent, and other content types. This breaks
+		// tools like the GitHub MCP server's get_file_contents which returns
+		// file content as EmbeddedResource.
+		mcpToolset := newMCPToolset(transport, log)
 
 		// Wrap the toolset to prefix tool names with server name
 		// This prevents conflicts when multiple MCP servers expose tools with the same name
