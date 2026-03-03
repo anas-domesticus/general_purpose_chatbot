@@ -133,6 +133,23 @@ func (c *ClaudeModel) generateContentNonStreaming(ctx context.Context, req *mode
 		}
 	}
 
+	// Estimate fixed token overhead from system prompt and tools
+	fixedOverhead := estimateSystemBlocksTokens(systemBlocks)
+	if len(params.Tools) > 0 {
+		fixedOverhead += estimateToolsTokens(params.Tools)
+	}
+
+	// Truncate oldest messages if the conversation would exceed the context window
+	truncatedMessages, removedCount := truncateMessages(params.Messages, fixedOverhead)
+	if removedCount > 0 {
+		c.logger.Info("truncated conversation history to fit context window",
+			slog.Int("original_messages", len(params.Messages)),
+			slog.Int("removed_messages", removedCount),
+			slog.Int("remaining_messages", len(truncatedMessages)),
+		)
+		params.Messages = truncatedMessages
+	}
+
 	// Make the API call
 	msg, err := c.client.Messages.New(ctx, params)
 	if err != nil {
