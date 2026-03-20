@@ -1,3 +1,4 @@
+// Package health provides health check utilities for liveness and readiness probes.
 package health
 
 import (
