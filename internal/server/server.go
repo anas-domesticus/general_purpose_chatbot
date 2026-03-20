@@ -4,11 +4,13 @@ package server
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sync"
 
 	acpclient "github.com/lewisedginton/general_purpose_chatbot/internal/acp"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/config"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/slack"
+	"github.com/lewisedginton/general_purpose_chatbot/pkg/health"
 	"go.uber.org/zap"
 )
 
@@ -51,6 +53,11 @@ func (s *Server) Run() error {
 		return fmt.Errorf("no connectors enabled")
 	}
 
+	// Start health check HTTP server if enabled.
+	if s.cfg.Health.Enabled {
+		s.startHealthServer()
+	}
+
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
 
@@ -75,4 +82,37 @@ func (s *Server) Run() error {
 		return err
 	}
 	return nil
+}
+
+func (s *Server) startHealthServer() {
+	checker := health.New(
+		health.WithLogger(s.log),
+		health.WithTimeout(s.cfg.Health.Timeout),
+		health.WithFailureThreshold(s.cfg.Health.FailureThreshold),
+	)
+
+	// Liveness: process is alive if this handler can respond.
+	checker.AddLivenessCheck(health.NewCheckFunc("process", func(_ context.Context) error {
+		return nil
+	}))
+
+	// Readiness: Slack connector is connected.
+	if s.slackConnector != nil {
+		checker.AddReadinessCheck(health.NewCheckFunc("slack", func(_ context.Context) error {
+			return s.slackConnector.Ready()
+		}))
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc(s.cfg.Health.LivenessPath, checker.LivenessHandler())
+	mux.HandleFunc(s.cfg.Health.ReadinessPath, checker.ReadinessHandler())
+
+	addr := fmt.Sprintf(":%d", s.cfg.Health.Port)
+	s.log.Infow("Starting health check server", "addr", addr)
+
+	go func() {
+		if err := http.ListenAndServe(addr, mux); err != nil { //nolint:gosec // health server; no need for timeouts
+			s.log.Errorw("Health check server error", "error", err)
+		}
+	}()
 }
