@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.25-bookworm AS builder
+FROM golang:1.24-bookworm AS builder
 
 WORKDIR /app
 
@@ -16,13 +16,18 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o chatbot \
     ./cmd/chatbot/main.go
 
-# Final stage
-FROM scratch
+# Final stage — distroless for minimal attack surface
+FROM gcr.io/distroless/static-debian12:nonroot
 
-# Copy CA certificates for HTTPS
+# CA certificates for HTTPS (Slack API, etc.)
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 # Copy binary
 COPY --from=builder /app/chatbot /chatbot
+
+# Health check endpoint
+EXPOSE 8080
+
+USER nonroot:nonroot
 
 ENTRYPOINT ["/chatbot"]
