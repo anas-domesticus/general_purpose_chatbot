@@ -23,11 +23,18 @@ type PermissionFunc func(ctx context.Context, req acp.RequestPermissionRequest) 
 // output into a buffer and handling permission requests.
 // By default all permissions are auto-approved. Use WithPermissionFunc to
 // install an interactive handler (e.g. Slack buttons) instead.
+//
+// The ACP SDK dispatches notifications (SessionUpdate) in separate goroutines
+// while response messages (PromptResponse) are delivered synchronously. This
+// means the Prompt() call may return before the last SessionUpdate goroutine
+// completes. Use WaitForPendingUpdates() after Prompt returns to ensure all
+// buffered content has been written before reading GetResponse().
 type ChatbotACPClient struct {
 	mu             sync.Mutex
 	responseBuffer strings.Builder
 	log            *zap.SugaredLogger
 	permissionFunc PermissionFunc // nil → auto-approve
+	pendingUpdates sync.WaitGroup
 }
 
 // NewChatbotACPClient creates a new client that auto-approves all permissions.
@@ -35,6 +42,13 @@ func NewChatbotACPClient(log *zap.SugaredLogger) *ChatbotACPClient {
 	return &ChatbotACPClient{
 		log: log,
 	}
+}
+
+// WaitForPendingUpdates blocks until all in-flight SessionUpdate notification
+// handlers have completed. Call this after Prompt() returns to ensure the
+// response buffer contains all agent output.
+func (c *ChatbotACPClient) WaitForPendingUpdates() {
+	c.pendingUpdates.Wait()
 }
 
 // WithPermissionFunc sets an interactive permission handler. When set, the
@@ -46,6 +60,9 @@ func (c *ChatbotACPClient) WithPermissionFunc(fn PermissionFunc) {
 
 // SessionUpdate handles agent session notifications, buffering text responses.
 func (c *ChatbotACPClient) SessionUpdate(_ context.Context, n acp.SessionNotification) error {
+	c.pendingUpdates.Add(1)
+	defer c.pendingUpdates.Done()
+
 	u := n.Update
 
 	switch {

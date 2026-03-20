@@ -66,6 +66,11 @@ func (e *Executor) Execute(ctx context.Context, req Request, agentCfg config.ACP
 		return Response{}, fmt.Errorf("acp executor: prompt for scope %q: %w", req.ScopeKey, err)
 	}
 
+	// The ACP SDK dispatches SessionUpdate notifications in separate goroutines
+	// while delivering the PromptResponse synchronously. Wait for any in-flight
+	// notification handlers to finish writing to the response buffer.
+	proc.client.WaitForPendingUpdates()
+
 	text := FormatResponse(proc.client.GetResponse(), promptResp.StopReason)
 
 	e.log.Infow("acp executor: prompt completed",
