@@ -1,31 +1,22 @@
-version: '3.8'
-
 services:
   chatbot:
     build:
       context: .
       dockerfile: Dockerfile
+    command: ["--config", "/config.yaml"]
     ports:
       - "8080:8080"
-    environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-3-5-sonnet-20241022}
-      - LOG_LEVEL=${LOG_LEVEL:-info}
-      - PORT=${PORT:-8080}
-    restart: unless-stopped
-    tmpfs:
-      - /tmp
-
-  litellm:
-    image: ghcr.io/berriai/litellm:main-latest
-    ports:
-      - "4000:4000"
-    environment:
-      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-1234-dev-key}
-      - LITELLM_SALT_KEY=${LITELLM_SALT_KEY:-sk-salt-dev-key}
-      - UI_USERNAME=${UI_USERNAME:-admin}
-      - UI_PASSWORD=${UI_PASSWORD:-admin}
     volumes:
-      - ./litellm-config.yaml:/app/config.yaml:ro
-    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "8"]
+      - ./config.yaml:/config.yaml:ro
+    environment:
+      # Slack tokens (required)
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
+      # Agent API keys (passed through to ACP agent subprocesses via config env block)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    # Note: distroless has no shell/wget/curl, so Docker HEALTHCHECK cannot
+    # probe the container directly. Use Docker Compose depends_on with
+    # service_healthy condition by adding a sidecar, or rely on orchestrator
+    # probes (e.g. Kubernetes livenessProbe hitting :8080/health/live).
     restart: unless-stopped
