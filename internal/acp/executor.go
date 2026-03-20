@@ -72,12 +72,18 @@ func (e *Executor) Execute(ctx context.Context, req Request, agentCfg config.ACP
 		"stop_reason", string(promptResp.StopReason),
 	)
 
-	text := proc.client.GetResponse()
-	if text == "" && promptResp.StopReason != acp.StopReasonEndTurn {
-		text = fmt.Sprintf("[agent stopped: %s]", promptResp.StopReason)
-	}
+	text := FormatResponse(proc.client.GetResponse(), promptResp.StopReason)
 
 	return Response{Text: text}, nil
+}
+
+// FormatResponse returns the response text, adding a synthetic message if the
+// agent stopped for a reason other than end_turn with no text output.
+func FormatResponse(text string, stopReason acp.StopReason) string {
+	if text == "" && stopReason != acp.StopReasonEndTurn {
+		return fmt.Sprintf("[agent stopped: %s]", stopReason)
+	}
+	return text
 }
 
 // Shutdown stops all managed agent processes.
