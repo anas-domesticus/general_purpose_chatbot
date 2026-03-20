@@ -1,351 +1,125 @@
-# General Purpose Chatbot Framework
+# ACP Chatbot
 
-A modular, extensible agent framework built in Go for connecting chat platforms to LLM-powered conversational agents.
+A Slack-to-ACP bridge that connects Slack to any [ACP-compatible](https://agentclientprotocol.com/) coding agent — Goose, Claude Code, OpenCode, and others.
 
-> **⚠️ Active Development Notice**
-> This project is under rapid active development and is not yet stable. The API, configuration format, and features are subject to change without notice. **Do not rely on this project for production use in its current state.**
+> **⚠️ Active Development** — API and configuration are subject to change.
 
-## What It Is
+## What It Does
 
-This framework bridges chat platforms (Slack, Telegram) with LLMs using Google's Agent Development Kit (ADK). Unlike traditional command-based ChatOps tools, it enables natural language conversations with AI agents that can integrate with external tools via MCP (Model Context Protocol) servers.
-
-### Architecture
+This tool is pure glue: it receives messages from Slack, forwards them to an ACP agent subprocess over JSON-RPC/stdio, and sends the response back. The agent handles all LLM calls, tools, and MCP servers.
 
 ```
-Chat Platform (Slack/Telegram)
-        ↓
-    Connector (handles platform-specific messaging)
-        ↓
-    Executor (routes messages to agents)
-        ↓
-    Agent Factory (creates LLM-powered agents)
-        ↓
-    MCP Tools (filesystem, database, HTTP, custom)
+Slack (Socket Mode) → Connector → ACP Executor → Agent subprocess (Goose, Claude Code, etc.)
 ```
 
-## Key Features
+## Features
 
-- **Multi-LLM Support** - Support for Claude (Anthropic), GPT-4 (OpenAI), and Gemini (Google) with custom LLM implementations
-- **Multi-Platform Support** - Slack (Socket Mode) and Telegram connectors with extensible architecture
-- **MCP Tool Ecosystem** - Connect to any Model Context Protocol server for extended capabilities
-- **Session Management** - Persistent conversations with local or S3 storage backends
-- **Customizable Agents** - Configure agent behavior via `system.md` prompt files
-- **Production Ready** - Structured logging, health checks, graceful shutdown
-
-## Use Cases
-
-### DevOps & Kubernetes Operations
-Query logs, check pod status, and troubleshoot issues through natural conversation instead of remembering complex kubectl commands.
-
-> "Show me the logs from the payment service in the last hour"
-> "Which pods are in CrashLoopBackOff?"
-> "Scale the frontend deployment to 5 replicas"
-
-### Internal Tooling Assistant
-Connect your internal APIs and databases to give teams a conversational interface to company systems.
-
-> "What's the status of order #12345?"
-> "Create a new support ticket for customer Acme Corp"
-> "Show me sales metrics for last quarter"
-
-### Document & Knowledge Base Search
-Integrate with filesystem or database MCP servers to search and retrieve information.
-
-> "Find the architecture docs for the auth service"
-> "What's our policy on PTO requests?"
-
-### Multi-Tool Workflows
-Chain multiple MCP tools together for complex operations.
-
-> "Check if the API is healthy, and if not, show me the recent error logs"
-
+- **Channel-to-agent mapping** — different Slack channels can use different agents
+- **Multi-agent support** — configure multiple agents (e.g. Goose with Claude, Goose with GPT-4o)
+- **Thread-scoped sessions** — each Slack thread gets its own ACP session
+- **DM support** — direct messages use the default agent
+- **MCP server forwarding** — pass MCP server configs to agents via ACP session setup
+- **Auto-approve permissions** — headless mode with `PermissionFunc` hook for future interactive flows
+- **Health checks** — HTTP liveness/readiness endpoints for Kubernetes
 ## Quick Start
 
-Configuration can be provided via environment variables, a YAML config file, or both. When both are used, environment variables override values from the config file.
+### Prerequisites
 
-### Option 1: Environment Variables Only
+- Go 1.24+
+- An ACP-compatible agent installed (e.g. [Goose](https://github.com/block/goose), [Claude Code](https://docs.anthropic.com/en/docs/claude-code))
+- A Slack app with Socket Mode enabled ([setup guide](#slack-app-setup))
 
-```bash
-# Set required credentials
-export ANTHROPIC_API_KEY="sk-ant-your-api-key"
-export SLACK_BOT_TOKEN="xoxb-your-bot-token"
-export SLACK_APP_TOKEN="xapp-your-app-token"
-
-# Create a system prompt (optional)
-cat > system.md << 'EOF'
-You are a helpful DevOps assistant. You help engineers query logs,
-check system status, and troubleshoot issues.
-EOF
-
-# Run the chatbot
-./chatbot
-```
-
-### Option 2: Config File with Environment Variable Overrides
+### Run
 
 ```bash
-# Set sensitive credentials as environment variables (these override config file values)
-export ANTHROPIC_API_KEY="sk-ant-your-api-key"
-export SLACK_BOT_TOKEN="xoxb-your-bot-token"
-export SLACK_APP_TOKEN="xapp-your-app-token"
+# Set Slack tokens
+export SLACK_BOT_TOKEN=xoxb-your-bot-token
+export SLACK_APP_TOKEN=xapp-your-app-token
+export ANTHROPIC_API_KEY=your-api-key  # or whatever your agent needs
 
-# Create a config file for non-sensitive settings
-cat > config.yaml << 'EOF'
-llm:
-  provider: claude  # or openai, or gemini
-
-anthropic:
-  model: claude-sonnet-4-5-20250929
-
-storage:
-  backend: local
-  local_dir: ./data
-EOF
-
-# Create a system prompt (optional)
-cat > system.md << 'EOF'
-You are a helpful DevOps assistant. You help engineers query logs,
-check system status, and troubleshoot issues.
-EOF
-
-# Run the chatbot with config file
-./chatbot --config config.yaml
+# Create config.yaml (see docs/examples/config-acp.yaml for full example)
+# Run
+go run ./cmd/chatbot -config config.yaml
 ```
 
-See [Configuration Examples](#configuration-examples) for complete config files for each LLM provider.
+### Docker
+
+```bash
+docker compose up
+```
 
 ## Configuration
 
-### Agent Behavior (`system.md`)
-
-The agent's personality and capabilities are defined in a `system.md` file:
-
-```markdown
-# Your Custom Agent
-
-You are a specialized AI assistant for [your use case].
-
-## Capabilities
-- You can access the filesystem via MCP tools
-- You can query the database for customer information
-
-## Guidelines
-- Always confirm before making changes
-- Provide concise, actionable responses
-```
-
-Place this file in the working directory or mount it as a volume in containers.
-
-### Application Config (`config.yaml`)
-
-Configuration is loaded from YAML file first, then environment variables override any matching values.
-
-#### Environment Variable Interpolation
-
-You can reference environment variables directly in YAML values using `${VAR}` or `$VAR` syntax. This is useful for keeping secrets out of config files:
+See [`docs/examples/config-acp.yaml`](docs/examples/config-acp.yaml) for a fully commented example.
 
 ```yaml
-mcp:
-  servers:
-    database:
-      auth:
-        type: bearer
-        token: ${MCP_DATABASE_TOKEN}  # Expanded from environment variable
-    github:
-      auth:
-        type: api_key
-        api_key: ${GITHUB_TOKEN}
-        header: Authorization
+acp:
+  default_agent: goose
+  cwd: /home/user/projects
+  agents:
+    goose:
+      command: goose
+      args: ["acp"]
+      env:
+        GOOSE_PROVIDER: "anthropic"
+        ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+  channels:
+    C0123456789:          # #dev channel → uses goose agent
+      agent: goose
 ```
-
-Then set the environment variables:
-```bash
-export MCP_DATABASE_TOKEN="secret-bearer-token"
-export GITHUB_TOKEN="ghp_xxxxxxxxxxxx"
-```
-
-**Note:** Unset variables expand to empty strings. Use `$$` to include a literal `$` character.
-
-Minimal configuration example (using Anthropic):
-
-```yaml
-llm:
-  provider: claude  # claude, gemini, or openai
-
-anthropic:
-  model: claude-sonnet-4-5-20250929
-  # api_key loaded from ANTHROPIC_API_KEY env var
-
-# slack credentials loaded from SLACK_BOT_TOKEN and SLACK_APP_TOKEN env vars
-
-storage:
-  backend: local  # local or s3
-
-mcp:
-  enabled: true
-  servers:
-    filesystem:
-      enabled: true
-      transport: stdio
-      command: npx
-      args: ["-y", "@modelcontextprotocol/server-filesystem", "/data"]
-```
-
-For complete configuration examples including OpenAI and Gemini, see [Configuration Examples](#configuration-examples).
-
-### MCP Server Configuration
-
-Connect to any MCP-compliant server for extended capabilities:
-
-```yaml
-mcp:
-  enabled: true
-  timeout: 30s
-  servers:
-    # Filesystem operations
-    filesystem:
-      name: filesystem
-      enabled: true
-      transport: stdio
-      command: npx
-      args: ["-y", "@modelcontextprotocol/server-filesystem", "/data"]
-      environment:
-        PATH: /usr/local/bin:/usr/bin
-      tool_filter:  # Optional: limit which tools are exposed
-        - list_directory
-        - read_file
-
-    # Database queries via WebSocket
-    database:
-      name: database
-      enabled: false
-      transport: websocket
-      url: ws://db-server:8080/mcp
-      auth:
-        type: bearer  # bearer, basic, or api_key
-        token: ${MCP_DATABASE_TOKEN}  # interpolated from environment variable
-
-    # Custom internal tools
-    internal-api:
-      name: internal-api
-      enabled: true
-      transport: stdio
-      command: ./mcp-internal-tools
-```
-
-**Transport Support:**
-- `stdio` - Executes command as subprocess
-- `http` - HTTP transport (2025-03-26 MCP spec)
-- `sse` - Server-Sent Events transport (2024-11-05 MCP spec)
-- `websocket` - WebSocket transport with authentication support
-
-**Authentication Types:**
-- `bearer` - Bearer token authentication
-- `basic` - Basic auth (username/password)
-- `api_key` - API key in custom header
 
 ### Environment Variables
 
-#### LLM Providers
+| Variable | Description |
+|----------|-------------|
+| `SLACK_BOT_TOKEN` | Slack bot token (`xoxb-...`) |
+| `SLACK_APP_TOKEN` | Slack app token (`xapp-...`) |
+| `ANTHROPIC_API_KEY` | Passed through to agent subprocess |
+| `OPENAI_API_KEY` | Passed through to agent subprocess |
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `LLM_PROVIDER` | LLM provider to use | `claude` |
-| `ANTHROPIC_API_KEY` | Anthropic Claude API key | - |
-| `CLAUDE_MODEL` | Claude model name | `claude-sonnet-4-5-20250929` |
-| `OPENAI_API_KEY` | OpenAI API key | - |
-| `OPENAI_MODEL` | OpenAI model name | `gpt-4` |
-| `GEMINI_API_KEY` | Google Gemini API key | - |
-| `GEMINI_MODEL` | Gemini model name | `gemini-2.5-flash` |
+### Slack App Setup
 
-#### Chat Platforms
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `SLACK_BOT_TOKEN` | Slack bot token (xoxb-*) | For Slack |
-| `SLACK_APP_TOKEN` | Slack app token (xapp-*) | For Slack |
-| `SLACK_DEBUG` | Enable Slack debug logging | No |
-| `TELEGRAM_BOT_TOKEN` | Telegram bot token | For Telegram |
-| `TELEGRAM_DEBUG` | Enable Telegram debug logging | No |
-
-#### Session Storage
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `STORAGE_BACKEND` | Storage backend (local/s3) | `local` |
-| `STORAGE_LOCAL_DIR` | Directory for local file storage | `./data` |
-| `STORAGE_S3_BUCKET` | S3 bucket name | - |
-| `STORAGE_S3_PREFIX` | S3 key prefix | `sessions` |
-| `STORAGE_S3_REGION` | AWS region | - |
-| `STORAGE_S3_PROFILE` | AWS profile name (optional) | - |
-
-#### Monitoring & Logging
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `LOG_LEVEL` | Log level (debug/info/warn/error) | `info` |
-| `LOG_FORMAT` | Log format (json/text) | `json` |
-| `HEALTH_CHECK_TIMEOUT` | Health check timeout | `10s` |
-
-#### MCP Configuration
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `MCP_ENABLED` | Enable MCP servers | `false` |
-| `MCP_TIMEOUT` | MCP operation timeout | `30s` |
-
-#### Service Configuration
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SERVICE_NAME` | Service name | `general-purpose-chatbot` |
-| `ENVIRONMENT` | Environment (development/production) | `development` |
-| `REQUEST_TIMEOUT` | Request timeout | `30s` |
-
-For complete configuration options, see the [example configs](docs/examples/).
-
-### Session Storage
-
-Choose where conversation history is stored:
-
-- **local** - JSON files on disk (default, good for development)
-- **s3** - AWS S3 bucket (production, scalable)
-
-```yaml
-storage:
-  backend: s3
-  s3_bucket: my-chatbot-sessions
-  s3_prefix: sessions/
-  s3_region: us-west-2
-  s3_profile: default  # optional AWS profile
-```
-
-## Technology Stack
-
-| Component | Technology |
-|-----------|------------|
-| Language | Go 1.24 |
-| LLM Providers | Anthropic Claude, OpenAI GPT-4, Google Gemini |
-| Agent Framework | Google ADK v0.3.0 |
-| Tool Protocol | MCP (Model Context Protocol) v0.7.0 |
-| Chat Platforms | Slack Socket Mode, Telegram Bot API |
-| Session Storage | Local filesystem, AWS S3 |
-| Observability | Logrus |
-
-## Configuration Examples
-
-Complete configuration examples for each LLM provider:
-
-- [Claude (Anthropic)](docs/examples/config-claude.yaml) - Full configuration with all options
-- [OpenAI](docs/examples/config-openai.yaml) - GPT-4 configuration example
-- [Gemini (Google)](docs/examples/config-gemini.yaml) - Gemini configuration example
+1. Create app at https://api.slack.com/apps
+2. Enable **Socket Mode** → generate app token (`xapp-...`)
+3. **Bot Token Scopes**: `app_mentions:read`, `chat:write`, `channels:history`, `im:history`
+4. **Event Subscriptions**: `app_mention`, `message.im`
+5. Install to workspace → copy bot token (`xoxb-...`)
 
 ## Health Checks
 
-**Health Check Endpoints:**
-- `/health` - Combined liveness and readiness status
-- `/health/live` - Kubernetes liveness probe
-- `/health/ready` - Kubernetes readiness probe
+When `health.enabled: true` (default), an HTTP server runs on port 8080:
+
+- `GET /health/live` — liveness probe (process alive)
+- `GET /health/ready` — readiness probe (Slack connected)
+
+## Project Structure
+
+```
+cmd/chatbot/main.go              # Entry point
+internal/
+  acp/                           # ACP client core
+    client.go                    #   acp.Client implementation (notifications, permissions)
+    executor.go                  #   Sends prompts, collects responses
+    process.go                   #   Agent subprocess lifecycle
+    router.go                    #   Channel → agent config resolution
+    mcp.go                       #   MCP server config conversion
+    types.go                     #   Request/Response types
+  config/                        # Application configuration
+  connectors/slack/              # Slack Socket Mode connector
+  server/                        # Server wiring and health checks
+pkg/
+  config/                        # Generic config loading (YAML + env vars)
+  health/                        # Health check framework
+```
+
+## Development
+
+```bash
+task lint       # Run golangci-lint
+task test       # Run tests
+task build      # Build the binary
+task test:race  # Run tests with race detection
+```
 
 ## Contributing
 
