@@ -47,9 +47,12 @@ func (pm *ProcessManager) GetOrCreate(ctx context.Context, scopeKey string, agen
 		select {
 		case <-p.done:
 			// Process died — clean up and respawn below.
-			pm.log.Warnw("acp: process dead, respawning", "scope", scopeKey)
+			pm.log.Warnw("acp: existing process dead, will respawn",
+				"scope", scopeKey, "pid", p.cmd.Process.Pid)
 			delete(pm.processes, scopeKey)
 		default:
+			pm.log.Debugw("acp: reusing existing process",
+				"scope", scopeKey, "pid", p.cmd.Process.Pid)
 			return p, nil
 		}
 	}
@@ -63,6 +66,13 @@ func (pm *ProcessManager) GetOrCreate(ctx context.Context, scopeKey string, agen
 }
 
 func (pm *ProcessManager) spawn(ctx context.Context, scopeKey string, agentCfg config.ACPAgentConfig, cwd string) (*AgentProcess, error) {
+	pm.log.Infow("acp: spawning agent process",
+		"scope", scopeKey,
+		"command", agentCfg.Command,
+		"args", agentCfg.Args,
+		"cwd", cwd,
+	)
+
 	cmd := exec.CommandContext(ctx, agentCfg.Command, agentCfg.Args...) //nolint:gosec // command is from trusted config
 	cmd.Dir = cwd
 	cmd.Env = os.Environ()
@@ -72,16 +82,25 @@ func (pm *ProcessManager) spawn(ctx context.Context, scopeKey string, agentCfg c
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return nil, fmt.Errorf("acp: stdin pipe: %w", err)
+		pm.log.Errorw("acp: failed to create stdin pipe",
+			"scope", scopeKey, "command", agentCfg.Command, "error", err)
+		return nil, fmt.Errorf("acp: stdin pipe for %q: %w", agentCfg.Command, err)
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("acp: stdout pipe: %w", err)
+		pm.log.Errorw("acp: failed to create stdout pipe",
+			"scope", scopeKey, "command", agentCfg.Command, "error", err)
+		return nil, fmt.Errorf("acp: stdout pipe for %q: %w", agentCfg.Command, err)
 	}
 
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("acp: start process: %w", err)
+		pm.log.Errorw("acp: failed to start agent process",
+			"scope", scopeKey, "command", agentCfg.Command, "cwd", cwd, "error", err)
+		return nil, fmt.Errorf("acp: start %q in %q: %w", agentCfg.Command, cwd, err)
 	}
+
+	pm.log.Infow("acp: agent process started, initializing ACP connection",
+		"scope", scopeKey, "pid", cmd.Process.Pid)
 
 	client := NewChatbotACPClient(pm.log)
 	conn := acp.NewClientSideConnection(client, stdin, stdout)
@@ -95,8 +114,10 @@ func (pm *ProcessManager) spawn(ctx context.Context, scopeKey string, agentCfg c
 		},
 	})
 	if err != nil {
+		pm.log.Errorw("acp: ACP initialize handshake failed",
+			"scope", scopeKey, "pid", cmd.Process.Pid, "error", err)
 		_ = cmd.Process.Kill()
-		return nil, fmt.Errorf("acp: initialize: %w", err)
+		return nil, fmt.Errorf("acp: initialize with %q (pid %d): %w", agentCfg.Command, cmd.Process.Pid, err)
 	}
 
 	// Create a new session.
@@ -106,8 +127,10 @@ func (pm *ProcessManager) spawn(ctx context.Context, scopeKey string, agentCfg c
 		McpServers: mcpServers,
 	})
 	if err != nil {
+		pm.log.Errorw("acp: failed to create ACP session",
+			"scope", scopeKey, "pid", cmd.Process.Pid, "cwd", cwd, "error", err)
 		_ = cmd.Process.Kill()
-		return nil, fmt.Errorf("acp: new session: %w", err)
+		return nil, fmt.Errorf("acp: new session with %q (pid %d): %w", agentCfg.Command, cmd.Process.Pid, err)
 	}
 
 	// Optionally set session mode.
@@ -117,7 +140,8 @@ func (pm *ProcessManager) spawn(ctx context.Context, scopeKey string, agentCfg c
 			ModeId:    acp.SessionModeId(agentCfg.DefaultMode),
 		})
 		if err != nil {
-			pm.log.Warnw("acp: set session mode failed", "error", err)
+			pm.log.Warnw("acp: set session mode failed (non-fatal)",
+				"scope", scopeKey, "mode", agentCfg.DefaultMode, "error", err)
 		}
 	}
 
@@ -128,12 +152,14 @@ func (pm *ProcessManager) spawn(ctx context.Context, scopeKey string, agentCfg c
 			ModelId:   acp.ModelId(agentCfg.DefaultModel),
 		})
 		if err != nil {
-			pm.log.Warnw("acp: set session model failed", "error", err)
+			pm.log.Warnw("acp: set session model failed (non-fatal)",
+				"scope", scopeKey, "model", agentCfg.DefaultModel, "error", err)
 		}
 	}
 
-	pm.log.Infow("acp: process spawned",
+	pm.log.Infow("acp: process ready",
 		"scope", scopeKey,
+		"pid", cmd.Process.Pid,
 		"session", string(sessResp.SessionId),
 	)
 
@@ -158,6 +184,7 @@ func (pm *ProcessManager) Remove(scopeKey string) error {
 	delete(pm.processes, scopeKey)
 
 	if p.cmd.Process != nil {
+		pm.log.Infow("acp: killing process", "scope", scopeKey, "pid", p.cmd.Process.Pid)
 		return p.cmd.Process.Kill()
 	}
 	return nil
@@ -168,8 +195,10 @@ func (pm *ProcessManager) Shutdown() {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
+	pm.log.Infow("acp: shutting down all agent processes", "count", len(pm.processes))
 	for key, p := range pm.processes {
 		if p.cmd.Process != nil {
+			pm.log.Infow("acp: killing process on shutdown", "scope", key, "pid", p.cmd.Process.Pid)
 			_ = p.cmd.Process.Kill()
 		}
 		delete(pm.processes, key)

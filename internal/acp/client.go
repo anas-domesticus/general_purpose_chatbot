@@ -95,6 +95,8 @@ func (c *ChatbotACPClient) RequestPermission(ctx context.Context, params acp.Req
 	}
 
 	// No allow option available — cancel.
+	c.log.Warnw("acp: no allow option available, canceling permission request",
+		"options_count", len(params.Options))
 	return acp.RequestPermissionResponse{
 		Outcome: acp.RequestPermissionOutcome{
 			Cancelled: &acp.RequestPermissionOutcomeCancelled{}, //nolint:misspell // SDK type name
@@ -103,37 +105,44 @@ func (c *ChatbotACPClient) RequestPermission(ctx context.Context, params acp.Req
 }
 
 // ReadTextFile is not supported — capabilities advertised as false.
-func (c *ChatbotACPClient) ReadTextFile(context.Context, acp.ReadTextFileRequest) (acp.ReadTextFileResponse, error) {
+func (c *ChatbotACPClient) ReadTextFile(_ context.Context, req acp.ReadTextFileRequest) (acp.ReadTextFileResponse, error) {
+	c.log.Warnw("acp: agent called unsupported ReadTextFile", "path", req.Path)
 	return acp.ReadTextFileResponse{}, errNotSupported
 }
 
 // WriteTextFile is not supported — capabilities advertised as false.
-func (c *ChatbotACPClient) WriteTextFile(context.Context, acp.WriteTextFileRequest) (acp.WriteTextFileResponse, error) {
+func (c *ChatbotACPClient) WriteTextFile(_ context.Context, req acp.WriteTextFileRequest) (acp.WriteTextFileResponse, error) {
+	c.log.Warnw("acp: agent called unsupported WriteTextFile", "path", req.Path)
 	return acp.WriteTextFileResponse{}, errNotSupported
 }
 
 // CreateTerminal is not supported — capabilities advertised as false.
 func (c *ChatbotACPClient) CreateTerminal(context.Context, acp.CreateTerminalRequest) (acp.CreateTerminalResponse, error) {
+	c.log.Warn("acp: agent called unsupported CreateTerminal")
 	return acp.CreateTerminalResponse{}, errNotSupported
 }
 
 // KillTerminalCommand is not supported — capabilities advertised as false.
 func (c *ChatbotACPClient) KillTerminalCommand(context.Context, acp.KillTerminalCommandRequest) (acp.KillTerminalCommandResponse, error) {
+	c.log.Warn("acp: agent called unsupported KillTerminalCommand")
 	return acp.KillTerminalCommandResponse{}, errNotSupported
 }
 
 // TerminalOutput is not supported — capabilities advertised as false.
 func (c *ChatbotACPClient) TerminalOutput(context.Context, acp.TerminalOutputRequest) (acp.TerminalOutputResponse, error) {
+	c.log.Warn("acp: agent called unsupported TerminalOutput")
 	return acp.TerminalOutputResponse{}, errNotSupported
 }
 
 // ReleaseTerminal is not supported — capabilities advertised as false.
 func (c *ChatbotACPClient) ReleaseTerminal(context.Context, acp.ReleaseTerminalRequest) (acp.ReleaseTerminalResponse, error) {
+	c.log.Warn("acp: agent called unsupported ReleaseTerminal")
 	return acp.ReleaseTerminalResponse{}, errNotSupported
 }
 
 // WaitForTerminalExit is not supported — capabilities advertised as false.
 func (c *ChatbotACPClient) WaitForTerminalExit(context.Context, acp.WaitForTerminalExitRequest) (acp.WaitForTerminalExitResponse, error) {
+	c.log.Warn("acp: agent called unsupported WaitForTerminalExit")
 	return acp.WaitForTerminalExitResponse{}, errNotSupported
 }
 

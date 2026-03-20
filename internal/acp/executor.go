@@ -25,27 +25,21 @@ func NewExecutor(log *zap.SugaredLogger) *Executor {
 
 // Execute sends a message to the appropriate ACP agent and returns the response.
 func (e *Executor) Execute(ctx context.Context, req Request, agentCfg config.ACPAgentConfig, cwd string) (Response, error) {
+	e.log.Debugw("acp executor: handling request",
+		"scope", req.ScopeKey, "command", agentCfg.Command, "cwd", cwd)
+
 	proc, err := e.processManager.GetOrCreate(ctx, req.ScopeKey, agentCfg, cwd)
 	if err != nil {
+		e.log.Errorw("acp executor: failed to get or create process",
+			"scope", req.ScopeKey, "command", agentCfg.Command, "error", err)
 		return Response{}, fmt.Errorf("acp executor: get or create process: %w", err)
-	}
-
-	// Check if process is dead and recreate.
-	select {
-	case <-proc.done:
-		e.log.Warnw("acp executor: process died, recreating", "scope", req.ScopeKey)
-		_ = e.processManager.Remove(req.ScopeKey)
-		proc, err = e.processManager.GetOrCreate(ctx, req.ScopeKey, agentCfg, cwd)
-		if err != nil {
-			return Response{}, fmt.Errorf("acp executor: recreate process: %w", err)
-		}
-	default:
 	}
 
 	// Check busy flag.
 	proc.mu.Lock()
 	if proc.busy {
 		proc.mu.Unlock()
+		e.log.Warnw("acp executor: agent is busy, rejecting request", "scope", req.ScopeKey)
 		return Response{}, fmt.Errorf("acp executor: agent is busy for scope %q", req.ScopeKey)
 	}
 	proc.busy = true
@@ -59,20 +53,26 @@ func (e *Executor) Execute(ctx context.Context, req Request, agentCfg config.ACP
 
 	proc.client.ResetBuffer()
 
+	e.log.Debugw("acp executor: sending prompt",
+		"scope", req.ScopeKey, "message_len", len(req.Message))
+
 	promptResp, err := proc.conn.Prompt(ctx, acp.PromptRequest{
 		SessionId: proc.sessionID,
 		Prompt:    []acp.ContentBlock{acp.TextBlock(req.Message)},
 	})
 	if err != nil {
-		return Response{}, fmt.Errorf("acp executor: prompt: %w", err)
+		e.log.Errorw("acp executor: prompt failed",
+			"scope", req.ScopeKey, "error", err)
+		return Response{}, fmt.Errorf("acp executor: prompt for scope %q: %w", req.ScopeKey, err)
 	}
 
-	e.log.Debugw("acp executor: prompt completed",
+	text := FormatResponse(proc.client.GetResponse(), promptResp.StopReason)
+
+	e.log.Infow("acp executor: prompt completed",
 		"scope", req.ScopeKey,
 		"stop_reason", string(promptResp.StopReason),
+		"response_len", len(text),
 	)
-
-	text := FormatResponse(proc.client.GetResponse(), promptResp.StopReason)
 
 	return Response{Text: text}, nil
 }
@@ -88,5 +88,6 @@ func FormatResponse(text string, stopReason acp.StopReason) string {
 
 // Shutdown stops all managed agent processes.
 func (e *Executor) Shutdown() {
+	e.log.Info("acp executor: shutting down")
 	e.processManager.Shutdown()
 }

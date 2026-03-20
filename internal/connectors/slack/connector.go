@@ -117,9 +117,8 @@ func (c *Connector) handleSocketEvent(ctx context.Context, envelope socketmode.E
 		}
 		c.logger.Debugw("Event received", "event_type", eventsAPIEvent.Type)
 		c.socketMode.Ack(*envelope.Request)
-		if err := c.handleEvent(ctx, eventsAPIEvent); err != nil {
-			c.logger.Errorw("Failed to handle event", "error", err)
-		}
+		// Errors are logged within the individual event handlers with full context.
+		_ = c.handleEvent(ctx, eventsAPIEvent)
 
 	case socketmode.EventTypeInteractive:
 		c.logger.Debug("Interactive event received")
@@ -234,18 +233,20 @@ func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.M
 		Message:  event.Text,
 	}, agentCfg, cwd)
 	if err != nil {
-		c.logger.Errorw("Error from ACP executor", "error", err)
+		c.logger.Errorw("Failed to execute ACP request for DM",
+			"scope", scopeKey, "user_id", event.User, "channel", event.Channel, "error", err)
 		_, _, _ = c.client.PostMessage(event.Channel,
 			slack.MsgOptionText("Sorry, I encountered an error processing your message.", false))
-		return err
+		return fmt.Errorf("execute DM for user %s: %w", event.User, err)
 	}
 
 	if resp.Text != "" {
 		_, _, err = c.client.PostMessage(event.Channel,
 			slack.MsgOptionText(resp.Text, false))
 		if err != nil {
-			c.logger.Errorw("Error sending message to Slack", "error", err)
-			return err
+			c.logger.Errorw("Failed to send DM response to Slack",
+				"channel", event.Channel, "user_id", event.User, "error", err)
+			return fmt.Errorf("send DM response: %w", err)
 		}
 	}
 
@@ -274,11 +275,12 @@ func (c *Connector) handleAppMentionEvent(ctx context.Context, event *slackevent
 		Message:  cleanText,
 	}, agentCfg, cwd)
 	if err != nil {
-		c.logger.Errorw("Error from ACP executor", "error", err)
+		c.logger.Errorw("Failed to execute ACP request for mention",
+			"scope", scopeKey, "channel", event.Channel, "thread_ts", threadTS, "error", err)
 		_, _, _ = c.client.PostMessage(event.Channel,
 			slack.MsgOptionText("Sorry, I encountered an error processing your message.", false),
 			slack.MsgOptionTS(threadTS))
-		return err
+		return fmt.Errorf("execute mention in %s (thread %s): %w", event.Channel, threadTS, err)
 	}
 
 	if resp.Text != "" {
@@ -286,8 +288,9 @@ func (c *Connector) handleAppMentionEvent(ctx context.Context, event *slackevent
 			slack.MsgOptionText(resp.Text, false),
 			slack.MsgOptionTS(threadTS))
 		if err != nil {
-			c.logger.Errorw("Error sending message to Slack", "error", err)
-			return err
+			c.logger.Errorw("Failed to send mention response to Slack",
+				"channel", event.Channel, "thread_ts", threadTS, "error", err)
+			return fmt.Errorf("send mention response to %s: %w", event.Channel, err)
 		}
 	}
 
