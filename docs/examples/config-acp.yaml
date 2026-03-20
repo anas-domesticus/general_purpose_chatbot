@@ -1,48 +1,127 @@
-service_name: general-purpose-chatbot
+# =============================================================================
+# ACP Chatbot — Configuration
+# =============================================================================
+# This chatbot bridges Slack to ACP-compatible coding agents.
+#
+# Slack tokens are set via environment variables (not in this file):
+#   export SLACK_BOT_TOKEN=xoxb-your-bot-token
+#   export SLACK_APP_TOKEN=xapp-your-app-token
+#
+# Run with:
+#   go run ./cmd/chatbot -config config.yaml
+# =============================================================================
+
+service_name: acp-chatbot
 version: "1.0.0"
-environment: production
+environment: development
 
 logging:
-  level: info
+  level: debug       # "debug" for dev, "info" for production
   format: json
 
 health:
   enabled: true
-  port: 8080
+  port: 8080         # GET /health/live and /health/ready
 
+# =============================================================================
+# ACP Agent Configuration
+# =============================================================================
 acp:
-  default_agent: claude
-  cwd: /home/chatbot/workspace
+  # Default agent used for DMs and channels without an explicit mapping.
+  default_agent: goose
+
+  # Global fallback working directory (used if agent/channel don't specify one).
+  cwd: /home/user/projects
 
   agents:
-    claude:
-      command: claude
-      args: ["--chat"]
+    goose:
+      # Goose's ACP mode is invoked via the "acp" subcommand.
+      # The ACP client spawns goose as a subprocess; it communicates over
+      # Streamable HTTP (POST /acp) with SSE streaming.
+      command: goose
+      args: ["acp"]
+
+      # Environment variables passed to the Goose subprocess.
+      # Goose reads provider/model from env vars or ~/.config/goose/config.yaml.
+      # Env vars here override the config file for this specific agent instance.
       env:
+        GOOSE_PROVIDER: "anthropic"
         ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
-      mcp_servers:
-        - name: filesystem
-          transport: stdio
-          command: npx
-          args: ["-y", "@modelcontextprotocol/server-filesystem", "/home/chatbot/workspace"]
+        GOOSE_MODEL: "claude-sonnet-4-20250514"
 
-    codex:
-      command: codex
-      args: ["--chat"]
-      cwd: /home/chatbot/code
+        # Optional: set approval mode for tool execution.
+        # Values: "auto" (no approval), "approve" (always ask), "smart_approve" (ask for risky ops)
+        # For a chatbot, "auto" avoids blocking on permission prompts that no human will answer.
+        GOOSE_MODE: "auto"
 
+        # Optional: configure a separate planning model for complex tasks.
+        # GOOSE_PLANNER_PROVIDER: "openai"
+        # GOOSE_PLANNER_MODEL: "gpt-4o"
+
+        # Optional: control creativity/randomness (0.0–1.0).
+        # GOOSE_TEMPERATURE: "0.7"
+
+      # Working directory for this agent (overrides global cwd).
+      cwd: /home/user/projects/main
+
+      # ACP session mode: NOT currently supported by goose's ACP server.
+      # Goose's approval mode is set via GOOSE_MODE env var at spawn time.
+      # default_mode: ""
+
+      # ACP session model: NOT currently supported via ACP protocol methods.
+      # Model selection is fixed at spawn time via GOOSE_PROVIDER/GOOSE_MODEL env vars.
+      # To use different models, define separate agent entries (see goose-gpt4o below).
+      # default_model: ""
+
+      # MCP servers to forward to the agent via session/new.
+      # NOTE: goose's ACP NewSessionRequest supports an mcp_servers field,
+      # but there is a known issue (block/goose#7477) where MCP sharing from
+      # ACP host to agent may not work reliably. As a workaround, configure
+      # extensions directly in goose's own config (~/.config/goose/config.yaml)
+      # or set GOOSE_CONFIG to point to a custom config for this instance.
+      #
+      # goose supports stdio and streamable HTTP transports (NOT deprecated SSE).
+      # mcp_servers:
+      #   - name: filesystem
+      #     transport: stdio
+      #     command: npx
+      #     args: ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/projects"]
+
+    # Example: a second goose instance pinned to a different model.
+    # Useful for cost optimization or model-specific tasks.
+    goose-gpt4o:
+      command: goose
+      args: ["acp"]
+      env:
+        GOOSE_PROVIDER: "openai"
+        OPENAI_API_KEY: "${OPENAI_API_KEY}"
+        GOOSE_MODEL: "gpt-4o"
+        GOOSE_MODE: "auto"
+      cwd: /home/user/projects/main
+
+  # Channel-to-agent mapping (optional).
+  # Maps Slack channel IDs to specific agents and/or working directories.
+  # Channels not listed here use the default_agent above.
+  #
+  # To find a channel ID: right-click the channel in Slack → "View channel details"
+  # → the ID is at the bottom (starts with C).
   channels:
-    C0123456789:
-      agent: codex
-      cwd: /home/chatbot/projects/main
+    # C0123456789:          # #dev-goose
+    #   agent: goose
+    #   cwd: /home/user/projects/specific-project
+    # C9876543210:          # #dev-goose-cheap
+    #   agent: goose-gpt4o
+    #   cwd: /home/user/projects/another-project
 
+# =============================================================================
+# Slack Configuration
+# =============================================================================
 slack:
   debug: false
-  # Set via environment variables:
-  #   SLACK_BOT_TOKEN=xoxb-...
-  #   SLACK_APP_TOKEN=xapp-...
+  # Tokens set via env vars: SLACK_BOT_TOKEN, SLACK_APP_TOKEN
 
+# =============================================================================
+# Telegram (not implemented yet — placeholder for future)
+# =============================================================================
 telegram:
   debug: false
-  # Set via environment variable:
-  #   TELEGRAM_BOT_TOKEN=...
