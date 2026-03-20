@@ -16,18 +16,29 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o chatbot \
     ./cmd/chatbot/main.go
 
-# Final stage — distroless for minimal attack surface
-FROM gcr.io/distroless/static-debian12:nonroot
+# Final stage — needs a real OS to spawn agent subprocesses
+FROM debian:bookworm-slim
 
-# CA certificates for HTTPS (Slack API, etc.)
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates curl && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copy binary
-COPY --from=builder /app/chatbot /chatbot
+# Install Goose (Block's AI agent with ACP support)
+# https://github.com/block/goose/releases
+RUN GOOSE_VERSION="v1.0.22" && \
+    curl -fsSL "https://github.com/block/goose/releases/download/${GOOSE_VERSION}/goose-x86_64-unknown-linux-gnu.tar.bz2" \
+    | tar -xj -C /usr/local/bin goose && \
+    chmod +x /usr/local/bin/goose
+
+# Create non-root user with a home directory (agents may need ~/.config)
+RUN useradd --create-home --shell /bin/bash chatbot
+USER chatbot
+WORKDIR /home/chatbot
+
+# Copy chatbot binary
+COPY --from=builder /app/chatbot /usr/local/bin/chatbot
 
 # Health check endpoint
 EXPOSE 8080
 
-USER nonroot:nonroot
-
-ENTRYPOINT ["/chatbot"]
+ENTRYPOINT ["chatbot"]

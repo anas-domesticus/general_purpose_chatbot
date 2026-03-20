@@ -15,8 +15,10 @@ services:
       # Agent API keys (passed through to ACP agent subprocesses via config env block)
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-    # Note: distroless has no shell/wget/curl, so Docker HEALTHCHECK cannot
-    # probe the container directly. Use Docker Compose depends_on with
-    # service_healthy condition by adding a sidecar, or rely on orchestrator
-    # probes (e.g. Kubernetes livenessProbe hitting :8080/health/live).
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
