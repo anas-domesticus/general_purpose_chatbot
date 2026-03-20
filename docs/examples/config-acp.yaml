@@ -47,7 +47,7 @@ acp:
       env:
         GOOSE_PROVIDER: "anthropic"
         ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
-        GOOSE_MODEL: "claude-sonnet-4-20250514"
+        GOOSE_MODEL: "claude-sonnet-4-6-20250217"
 
         # Optional: set approval mode for tool execution.
         # Values: "auto" (no approval), "approve" (always ask), "smart_approve" (ask for risky ops)
