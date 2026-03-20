@@ -5,7 +5,6 @@ import "fmt"
 // ACPConfig holds all ACP-related configuration.
 type ACPConfig struct {
 	DefaultAgent string                      `yaml:"default_agent"`
-	AutoApprove  bool                        `yaml:"auto_approve"`
 	Cwd          string                      `yaml:"cwd"`
 	Agents       map[string]ACPAgentConfig   `yaml:"agents"`
 	Channels     map[string]ACPChannelConfig `yaml:"channels"`
@@ -18,7 +17,6 @@ type ACPAgentConfig struct {
 	Env          map[string]string `yaml:"env"`
 	Cwd          string            `yaml:"cwd"`
 	MCPServers   []ACPMCPServer    `yaml:"mcp_servers"`
-	AutoApprove  *bool             `yaml:"auto_approve"`
 	DefaultMode  string            `yaml:"default_mode"`
 	DefaultModel string            `yaml:"default_model"`
 }

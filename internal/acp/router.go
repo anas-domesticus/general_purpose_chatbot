@@ -10,7 +10,6 @@ type Router struct {
 	agents       map[string]config.ACPAgentConfig
 	defaultAgent string
 	defaultCwd   string
-	autoApprove  bool
 }
 
 // NewRouter creates a Router from the given ACP configuration.
@@ -20,14 +19,11 @@ func NewRouter(cfg config.ACPConfig) *Router {
 		agents:       cfg.Agents,
 		defaultAgent: cfg.DefaultAgent,
 		defaultCwd:   cfg.Cwd,
-		autoApprove:  cfg.AutoApprove,
 	}
 }
 
 // Resolve returns the agent config and working directory for the given channel.
 // If the channel is not explicitly configured, the default agent is used.
-// The AutoApprove field on the returned config is resolved from the agent-level
-// override (if set) or the global default.
 func (r *Router) Resolve(channelID string) (config.ACPAgentConfig, string) {
 	agentName := r.defaultAgent
 	var channelCwd string
@@ -46,12 +42,6 @@ func (r *Router) Resolve(channelID string) (config.ACPAgentConfig, string) {
 	}
 	if channelCwd != "" {
 		cwd = channelCwd
-	}
-
-	// Resolve auto-approve: agent override > global.
-	if agentCfg.AutoApprove == nil {
-		approve := r.autoApprove
-		agentCfg.AutoApprove = &approve
 	}
 
 	return agentCfg, cwd

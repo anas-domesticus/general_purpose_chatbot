@@ -83,12 +83,7 @@ func (pm *ProcessManager) spawn(ctx context.Context, scopeKey string, agentCfg c
 		return nil, fmt.Errorf("acp: start process: %w", err)
 	}
 
-	autoApprove := false
-	if agentCfg.AutoApprove != nil {
-		autoApprove = *agentCfg.AutoApprove
-	}
-
-	client := NewChatbotACPClient(autoApprove, pm.log)
+	client := NewChatbotACPClient(pm.log)
 	conn := acp.NewClientSideConnection(client, stdin, stdout)
 
 	// Initialize the connection.

@@ -13,21 +13,35 @@ import (
 
 var errNotSupported = &acp.RequestError{Code: -32601, Message: "not supported"}
 
+// PermissionFunc is a callback for interactive permission handling.
+// When set, it is called instead of the default auto-approve logic.
+// Implementations should present the options to the user and return their selection.
+// This enables interactive flows like Slack buttons for approve/deny.
+type PermissionFunc func(ctx context.Context, req acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error)
+
 // ChatbotACPClient implements the acp.Client interface, collecting agent
 // output into a buffer and handling permission requests.
+// By default all permissions are auto-approved. Use WithPermissionFunc to
+// install an interactive handler (e.g. Slack buttons) instead.
 type ChatbotACPClient struct {
-	autoApprove    bool
 	mu             sync.Mutex
 	responseBuffer strings.Builder
 	log            logger.Logger
+	permissionFunc PermissionFunc // nil → auto-approve
 }
 
-// NewChatbotACPClient creates a new client with the given settings.
-func NewChatbotACPClient(autoApprove bool, log logger.Logger) *ChatbotACPClient {
+// NewChatbotACPClient creates a new client that auto-approves all permissions.
+func NewChatbotACPClient(log logger.Logger) *ChatbotACPClient {
 	return &ChatbotACPClient{
-		autoApprove: autoApprove,
-		log:         log,
+		log: log,
 	}
+}
+
+// WithPermissionFunc sets an interactive permission handler. When set, the
+// handler is called for every permission request instead of auto-approving.
+// This is the hook for future interactive flows (e.g. Slack approve/deny buttons).
+func (c *ChatbotACPClient) WithPermissionFunc(fn PermissionFunc) {
+	c.permissionFunc = fn
 }
 
 // SessionUpdate handles agent session notifications, buffering text responses.
@@ -57,26 +71,19 @@ func (c *ChatbotACPClient) SessionUpdate(_ context.Context, n acp.SessionNotific
 }
 
 // RequestPermission handles tool permission requests from the agent.
-func (c *ChatbotACPClient) RequestPermission(_ context.Context, params acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
-	if c.autoApprove {
-		for _, opt := range params.Options {
-			if opt.Kind == acp.PermissionOptionKindAllowOnce || opt.Kind == acp.PermissionOptionKindAllowAlways {
-				c.log.Debug("acp: auto-approving permission", logger.StringField("option", string(opt.OptionId)))
-				return acp.RequestPermissionResponse{
-					Outcome: acp.RequestPermissionOutcome{
-						Selected: &acp.RequestPermissionOutcomeSelected{
-							OptionId: opt.OptionId,
-						},
-					},
-				}, nil
-			}
-		}
+// If a PermissionFunc has been set via WithPermissionFunc, it is called to
+// handle the request interactively. Otherwise, the first allow option is
+// selected automatically.
+func (c *ChatbotACPClient) RequestPermission(ctx context.Context, params acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
+	// Delegate to interactive handler if configured.
+	if c.permissionFunc != nil {
+		return c.permissionFunc(ctx, params)
 	}
 
-	// Reject by default.
+	// Default: auto-approve by selecting the first allow option.
 	for _, opt := range params.Options {
-		if opt.Kind == acp.PermissionOptionKindRejectOnce {
-			c.log.Debug("acp: rejecting permission", logger.StringField("option", string(opt.OptionId)))
+		if opt.Kind == acp.PermissionOptionKindAllowOnce || opt.Kind == acp.PermissionOptionKindAllowAlways {
+			c.log.Debug("acp: auto-approving permission", logger.StringField("option", string(opt.OptionId)))
 			return acp.RequestPermissionResponse{
 				Outcome: acp.RequestPermissionOutcome{
 					Selected: &acp.RequestPermissionOutcomeSelected{
@@ -87,7 +94,7 @@ func (c *ChatbotACPClient) RequestPermission(_ context.Context, params acp.Reque
 		}
 	}
 
-	// No suitable option found — cancel.
+	// No allow option available — cancel.
 	return acp.RequestPermissionResponse{
 		Outcome: acp.RequestPermissionOutcome{
 			Cancelled: &acp.RequestPermissionOutcomeCancelled{}, //nolint:misspell // SDK type name

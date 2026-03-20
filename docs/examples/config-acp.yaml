@@ -12,7 +12,6 @@ health:
 
 acp:
   default_agent: claude
-  auto_approve: false
   cwd: /home/chatbot/workspace
 
   agents:
@@ -31,7 +30,6 @@ acp:
       command: codex
       args: ["--chat"]
       cwd: /home/chatbot/code
-      auto_approve: true
 
   channels:
     C0123456789:
