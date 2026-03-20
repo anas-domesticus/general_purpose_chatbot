@@ -1,0 +1,50 @@
+service_name: general-purpose-chatbot
+version: "1.0.0"
+environment: production
+
+logging:
+  level: info
+  format: json
+
+health:
+  enabled: true
+  port: 8080
+
+acp:
+  default_agent: claude
+  auto_approve: false
+  cwd: /home/chatbot/workspace
+
+  agents:
+    claude:
+      command: claude
+      args: ["--chat"]
+      env:
+        ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+      mcp_servers:
+        - name: filesystem
+          transport: stdio
+          command: npx
+          args: ["-y", "@modelcontextprotocol/server-filesystem", "/home/chatbot/workspace"]
+
+    codex:
+      command: codex
+      args: ["--chat"]
+      cwd: /home/chatbot/code
+      auto_approve: true
+
+  channels:
+    C0123456789:
+      agent: codex
+      cwd: /home/chatbot/projects/main
+
+slack:
+  debug: false
+  # Set via environment variables:
+  #   SLACK_BOT_TOKEN=xoxb-...
+  #   SLACK_APP_TOKEN=xapp-...
+
+telegram:
+  debug: false
+  # Set via environment variable:
+  #   TELEGRAM_BOT_TOKEN=...
