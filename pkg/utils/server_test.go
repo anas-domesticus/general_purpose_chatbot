@@ -3,17 +3,13 @@ package utils
 import (
 	"testing"
 
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/metrics"
+	"go.uber.org/zap"
 )
 
 func TestNewServer(t *testing.T) {
 	t.Run("creates server with default values", func(t *testing.T) {
-		log := logger.NewLogger(logger.Config{
-			Level:   logger.InfoLevel,
-			Format:  "json",
-			Service: "test",
-		})
+		log := zap.NewNop().Sugar()
 
 		server := NewServer(log, nil)
 
@@ -31,11 +27,7 @@ func TestNewServer(t *testing.T) {
 	})
 
 	t.Run("creates server with custom gRPC port", func(t *testing.T) {
-		log := logger.NewLogger(logger.Config{
-			Level:   logger.InfoLevel,
-			Format:  "json",
-			Service: "test",
-		})
+		log := zap.NewNop().Sugar()
 
 		config := &ServerConfig{
 			GrpcListenPort: 9000,
@@ -52,11 +44,7 @@ func TestNewServer(t *testing.T) {
 	})
 
 	t.Run("creates server with custom HTTP port", func(t *testing.T) {
-		log := logger.NewLogger(logger.Config{
-			Level:   logger.InfoLevel,
-			Format:  "json",
-			Service: "test",
-		})
+		log := zap.NewNop().Sugar()
 
 		config := &ServerConfig{
 			HTTPListenPort: 9001,
@@ -73,11 +61,7 @@ func TestNewServer(t *testing.T) {
 	})
 
 	t.Run("creates server with custom metrics", func(t *testing.T) {
-		log := logger.NewLogger(logger.Config{
-			Level:   logger.InfoLevel,
-			Format:  "json",
-			Service: "test",
-		})
+		log := zap.NewNop().Sugar()
 
 		m := metrics.NewMetrics(true, false, false, log)
 		config := &ServerConfig{
@@ -92,11 +76,7 @@ func TestNewServer(t *testing.T) {
 	})
 
 	t.Run("creates server with all custom options", func(t *testing.T) {
-		log := logger.NewLogger(logger.Config{
-			Level:   logger.InfoLevel,
-			Format:  "json",
-			Service: "test",
-		})
+		log := zap.NewNop().Sugar()
 
 		m := metrics.NewMetrics(false, true, false, log)
 		config := &ServerConfig{
@@ -120,11 +100,7 @@ func TestNewServer(t *testing.T) {
 	})
 
 	t.Run("ignores zero values in config", func(t *testing.T) {
-		log := logger.NewLogger(logger.Config{
-			Level:   logger.InfoLevel,
-			Format:  "json",
-			Service: "test",
-		})
+		log := zap.NewNop().Sugar()
 
 		config := &ServerConfig{
 			GrpcListenPort: 0, // Should be ignored
@@ -144,11 +120,7 @@ func TestNewServer(t *testing.T) {
 
 func TestServerConfig(t *testing.T) {
 	t.Run("ServerConfig struct creation", func(t *testing.T) {
-		log := logger.NewLogger(logger.Config{
-			Level:   logger.InfoLevel,
-			Format:  "json",
-			Service: "test",
-		})
+		log := zap.NewNop().Sugar()
 
 		m := metrics.NewMetrics(true, true, false, log)
 		config := &ServerConfig{

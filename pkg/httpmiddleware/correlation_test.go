@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
 
 func TestCorrelationIdMiddleware(t *testing.T) {
@@ -14,7 +13,7 @@ func TestCorrelationIdMiddleware(t *testing.T) {
 	var capturedHeaderID, capturedContextID string
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedHeaderID = r.Header.Get("X-Correlation-ID")
-		capturedContextID = logger.GetCorrelationIDFromContext(r.Context())
+		capturedContextID = r.Context().Value(correlationIDContextKey).(string)
 		w.WriteHeader(http.StatusOK)
 	})
 

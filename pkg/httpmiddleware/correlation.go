@@ -2,11 +2,15 @@
 package httpmiddleware
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/google/uuid"
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
+
+type contextKey string
+
+const correlationIDContextKey contextKey = "correlation_id"
 
 // CorrelationID middleware ensures every request has a unique correlation ID.
 // Always generates a new correlation ID and ignores any client-provided correlation headers.
@@ -22,7 +26,7 @@ func CorrelationID() func(http.Handler) http.Handler {
 			r.Header.Set("X-Correlation-ID", correlationID)
 
 			// Enrich context with correlation ID
-			ctx := logger.WithCorrelationIDContext(r.Context(), correlationID)
+			ctx := context.WithValue(r.Context(), correlationIDContextKey, correlationID)
 			r = r.WithContext(ctx)
 
 			next.ServeHTTP(w, r)

@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 )
@@ -69,7 +69,7 @@ app_total_grpc_requests 0
 app_total_http_requests 0
 `
 
-	m := NewMetrics(true, true, false, logger.NewLogger(logger.Config{Service: "test"}))
+	m := NewMetrics(true, true, false, zap.NewNop().Sugar())
 	port := getRandomHighPort()
 	m.Listen(port)
 	for i := 0; i < 5; i++ {
@@ -121,7 +121,7 @@ test_foo1 1
 # TYPE test_foo2 gauge
 test_foo2 1.234
 `
-	m := NewMetrics(false, false, false, logger.NewLogger(logger.Config{Service: "test"}))
+	m := NewMetrics(false, false, false, zap.NewNop().Sugar())
 	port := getRandomHighPort()
 	m.Listen(port)
 
@@ -172,7 +172,7 @@ func getRandomHighPort() int {
 
 func TestHTTPMiddleware(t *testing.T) {
 	// Create metrics instance with HTTP counters enabled
-	m := NewMetrics(true, false, false, logger.NewLogger(logger.Config{Service: "test"}))
+	m := NewMetrics(true, false, false, zap.NewNop().Sugar())
 
 	// Create test handler
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -257,7 +257,7 @@ func TestResponseWriter(t *testing.T) {
 
 func TestJobMetrics(t *testing.T) {
 	// Create metrics instance with job metrics enabled
-	m := NewMetrics(false, false, true, logger.NewLogger(logger.Config{Service: "test"}))
+	m := NewMetrics(false, false, true, zap.NewNop().Sugar())
 
 	// Verify job metrics were created
 	assert.NotNil(t, m.JobMetricCounters)
@@ -273,7 +273,7 @@ func TestJobMetrics(t *testing.T) {
 
 func TestGrpcInterceptor(t *testing.T) {
 	// Create metrics instance with gRPC counters enabled
-	m := NewMetrics(false, true, false, logger.NewLogger(logger.Config{Service: "test"}))
+	m := NewMetrics(false, true, false, zap.NewNop().Sugar())
 
 	// Mock handler that returns an error
 	errorHandler := func(ctx context.Context, req interface{}) (interface{}, error) {

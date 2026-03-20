@@ -6,7 +6,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
+	"go.uber.org/zap"
 )
 
 // Listen starts a gRPC server listening on the specified port.
@@ -25,12 +25,12 @@ import (
 //	// Handle server errors
 //	go func() {
 //		if err := <-errChan; err != nil {
-//			log.Error("Server error", logger.StringField("error", err.Error()))
+//			log.Errorw("Server error", "error", err.Error())
 //		}
 //	}()
 //
 //nolint:revive // function-result-limit: Returns 4 values for error channel, closer, graceful closer, and setup error
-func Listen(s *grpc.Server, listenPort int, log logger.Logger) (chan error, func(), func(), error) {
+func Listen(s *grpc.Server, listenPort int, log *zap.SugaredLogger) (chan error, func(), func(), error) {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", listenPort)) //nolint:noctx // gRPC server manages listener lifecycle
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to listen on port %d: %w", listenPort, err)
@@ -38,7 +38,7 @@ func Listen(s *grpc.Server, listenPort int, log logger.Logger) (chan error, func
 
 	errorChannel := make(chan error, 1)
 	go func() {
-		log.Info("Starting gRPC server", logger.StringField("address", lis.Addr().String()))
+		log.Infow("Starting gRPC server", "address", lis.Addr().String())
 		errorChannel <- s.Serve(lis)
 	}()
 

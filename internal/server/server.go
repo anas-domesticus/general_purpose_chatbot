@@ -9,20 +9,20 @@ import (
 	acpclient "github.com/lewisedginton/general_purpose_chatbot/internal/acp"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/config"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/connectors/slack"
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
+	"go.uber.org/zap"
 )
 
 // Server is the top-level application server.
 type Server struct {
 	cfg            *config.AppConfig
-	log            logger.Logger
+	log            *zap.SugaredLogger
 	acpExecutor    *acpclient.Executor
 	acpRouter      *acpclient.Router
 	slackConnector *slack.Connector
 }
 
 // New creates a new Server with the given configuration.
-func New(_ context.Context, cfg *config.AppConfig, log logger.Logger) (*Server, error) {
+func New(_ context.Context, cfg *config.AppConfig, log *zap.SugaredLogger) (*Server, error) {
 	s := &Server{cfg: cfg, log: log}
 
 	s.acpRouter = acpclient.NewRouter(cfg.ACP)

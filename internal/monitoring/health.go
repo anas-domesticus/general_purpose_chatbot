@@ -9,7 +9,7 @@ import (
 
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/health"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/health/checkers"
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
+	"go.uber.org/zap"
 )
 
 // Health status constants
@@ -23,7 +23,7 @@ const (
 // HealthMonitor manages health checks and monitoring endpoints for the application
 type HealthMonitor struct {
 	checker   *health.HealthChecker
-	logger    logger.Logger
+	logger    *zap.SugaredLogger
 	startTime time.Time
 }
 
@@ -35,7 +35,7 @@ type ConnectorHealthCheck interface {
 
 // Config holds configuration for the health monitor
 type Config struct {
-	Logger            logger.Logger
+	Logger            *zap.SugaredLogger
 	AnthropicAPIURL   string               // URL for Anthropic API health check
 	DatabaseURL       string               // Optional: Database connection string for health check
 	SlackConnector    ConnectorHealthCheck // Optional: Slack connector for health checks
@@ -128,7 +128,7 @@ func (hm *HealthMonitor) LivenessHandler() http.HandlerFunc {
 			response["status"] = statusUnhealthy
 			response["error"] = err.Error()
 			w.WriteHeader(http.StatusServiceUnavailable)
-			hm.logger.Error("Liveness check failed", logger.ErrorField(err))
+			hm.logger.Errorw("Liveness check failed", "error", err)
 		} else {
 			w.WriteHeader(http.StatusOK)
 		}
@@ -157,7 +157,7 @@ func (hm *HealthMonitor) ReadinessHandler() http.HandlerFunc {
 			response["status"] = statusNotReady
 			response["error"] = err.Error()
 			w.WriteHeader(http.StatusServiceUnavailable)
-			hm.logger.Error("Readiness check failed", logger.ErrorField(err))
+			hm.logger.Errorw("Readiness check failed", "error", err)
 		} else {
 			w.WriteHeader(http.StatusOK)
 		}

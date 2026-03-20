@@ -7,10 +7,10 @@ import (
 	"sync"
 
 	acpclient "github.com/lewisedginton/general_purpose_chatbot/internal/acp"
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
+	"go.uber.org/zap"
 )
 
 // Connector represents the Slack Socket Mode connector.
@@ -19,7 +19,7 @@ type Connector struct {
 	socketMode  *socketmode.Client
 	acpExecutor *acpclient.Executor
 	acpRouter   *acpclient.Router
-	logger      logger.Logger
+	logger      *zap.SugaredLogger
 	commands    *CommandRegistry
 	connected   bool
 	mu          sync.RWMutex
@@ -33,7 +33,7 @@ type Config struct {
 }
 
 // NewConnector creates a new Slack connector wired to ACP.
-func NewConnector(config Config, acpExec *acpclient.Executor, acpRouter *acpclient.Router, log logger.Logger) (*Connector, error) {
+func NewConnector(config Config, acpExec *acpclient.Executor, acpRouter *acpclient.Router, log *zap.SugaredLogger) (*Connector, error) {
 	if !strings.HasPrefix(config.BotToken, "xoxb-") {
 		return nil, fmt.Errorf("invalid bot token format, expected xoxb-*")
 	}
@@ -47,7 +47,7 @@ func NewConnector(config Config, acpExec *acpclient.Executor, acpRouter *acpclie
 		return nil, fmt.Errorf("acp router is required")
 	}
 	if log == nil {
-		return nil, fmt.Errorf("logger is required")
+		return nil, fmt.Errorf("logger is required") //nolint:goerr113 // simple validation
 	}
 
 	client := slack.New(
@@ -57,7 +57,7 @@ func NewConnector(config Config, acpExec *acpclient.Executor, acpRouter *acpclie
 	)
 	sm := socketmode.New(client, socketmode.OptionDebug(config.Debug))
 
-	slackLogger := log.WithFields(logger.StringField("connector", "slack"))
+	slackLogger := log.With("connector", "slack")
 
 	connector := &Connector{
 		client:      client,
@@ -99,7 +99,7 @@ func (c *Connector) handleSocketEvent(ctx context.Context, envelope socketmode.E
 		c.setConnected(false)
 
 	case socketmode.EventTypeConnectionError:
-		c.logger.Error("Connection failed", logger.StringField("data", fmt.Sprintf("%v", envelope.Data)))
+		c.logger.Errorw("Connection failed", "data", fmt.Sprintf("%v", envelope.Data))
 		c.setConnected(false)
 
 	case socketmode.EventTypeConnected:
@@ -112,13 +112,13 @@ func (c *Connector) handleSocketEvent(ctx context.Context, envelope socketmode.E
 	case socketmode.EventTypeEventsAPI:
 		eventsAPIEvent, ok := envelope.Data.(slackevents.EventsAPIEvent)
 		if !ok {
-			c.logger.Warn("Ignored non-EventsAPI event", logger.StringField("data", fmt.Sprintf("%+v", envelope)))
+			c.logger.Warnw("Ignored non-EventsAPI event", "data", fmt.Sprintf("%+v", envelope))
 			return
 		}
-		c.logger.Debug("Event received", logger.StringField("event_type", eventsAPIEvent.Type))
+		c.logger.Debugw("Event received", "event_type", eventsAPIEvent.Type)
 		c.socketMode.Ack(*envelope.Request)
 		if err := c.handleEvent(ctx, eventsAPIEvent); err != nil {
-			c.logger.Error("Failed to handle event", logger.ErrorField(err))
+			c.logger.Errorw("Failed to handle event", "error", err)
 		}
 
 	case socketmode.EventTypeInteractive:
@@ -145,34 +145,34 @@ func (c *Connector) handleSocketEvent(ctx context.Context, envelope socketmode.E
 		c.setConnected(false)
 
 	default:
-		c.logger.Warn("Unsupported event type received",
-			logger.StringField("event_type", string(envelope.Type)),
-			logger.StringField("data", fmt.Sprintf("%+v", envelope.Data)),
+		c.logger.Warnw("Unsupported event type received",
+			"event_type", string(envelope.Type),
+			"data", fmt.Sprintf("%+v", envelope.Data),
 		)
 	}
 }
 
 func (c *Connector) handleIncomingError(envelope socketmode.Event) {
 	if err, ok := envelope.Data.(*slack.IncomingEventError); ok {
-		c.logger.Warn("Incoming event error from Slack", logger.ErrorField(err.ErrorObj))
+		c.logger.Warnw("Incoming event error from Slack", "error", err.ErrorObj)
 	} else {
-		c.logger.Warn("Incoming event error from Slack", logger.StringField("data", fmt.Sprintf("%+v", envelope.Data)))
+		c.logger.Warnw("Incoming event error from Slack", "data", fmt.Sprintf("%+v", envelope.Data))
 	}
 }
 
 func (c *Connector) handleWriteError(envelope socketmode.Event) {
 	if err, ok := envelope.Data.(*socketmode.ErrorWriteFailed); ok {
-		c.logger.Error("Failed to write to Slack WebSocket", logger.ErrorField(err.Cause))
+		c.logger.Errorw("Failed to write to Slack WebSocket", "error", err.Cause)
 	} else {
-		c.logger.Error("Failed to write to Slack WebSocket", logger.StringField("data", fmt.Sprintf("%+v", envelope.Data)))
+		c.logger.Errorw("Failed to write to Slack WebSocket", "data", fmt.Sprintf("%+v", envelope.Data))
 	}
 }
 
 func (c *Connector) handleBadMessage(envelope socketmode.Event) {
 	if err, ok := envelope.Data.(*socketmode.ErrorBadMessage); ok {
-		c.logger.Warn("Bad message received from Slack", logger.ErrorField(err.Cause), logger.StringField("message", string(err.Message)))
+		c.logger.Warnw("Bad message received from Slack", "error", err.Cause, "message", string(err.Message))
 	} else {
-		c.logger.Warn("Bad message received from Slack", logger.StringField("data", fmt.Sprintf("%+v", envelope.Data)))
+		c.logger.Warnw("Bad message received from Slack", "data", fmt.Sprintf("%+v", envelope.Data))
 	}
 }
 
@@ -221,9 +221,9 @@ func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.M
 		return nil
 	}
 
-	c.logger.Info("Processing DM",
-		logger.StringField("user_id", event.User),
-		logger.StringField("channel", event.Channel))
+	c.logger.Infow("Processing DM",
+		"user_id", event.User,
+		"channel", event.Channel)
 
 	// DMs use the default agent.
 	scopeKey := fmt.Sprintf("slack:dm:%s", event.User)
@@ -234,7 +234,7 @@ func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.M
 		Message:  event.Text,
 	}, agentCfg, cwd)
 	if err != nil {
-		c.logger.Error("Error from ACP executor", logger.ErrorField(err))
+		c.logger.Errorw("Error from ACP executor", "error", err)
 		_, _, _ = c.client.PostMessage(event.Channel,
 			slack.MsgOptionText("Sorry, I encountered an error processing your message.", false))
 		return err
@@ -244,7 +244,7 @@ func (c *Connector) handleMessageEvent(ctx context.Context, event *slackevents.M
 		_, _, err = c.client.PostMessage(event.Channel,
 			slack.MsgOptionText(resp.Text, false))
 		if err != nil {
-			c.logger.Error("Error sending message to Slack", logger.ErrorField(err))
+			c.logger.Errorw("Error sending message to Slack", "error", err)
 			return err
 		}
 	}
@@ -259,10 +259,10 @@ func (c *Connector) handleAppMentionEvent(ctx context.Context, event *slackevent
 		threadTS = event.TimeStamp
 	}
 
-	c.logger.Info("Processing mention",
-		logger.StringField("user_id", event.User),
-		logger.StringField("channel", event.Channel),
-		logger.StringField("thread_ts", threadTS))
+	c.logger.Infow("Processing mention",
+		"user_id", event.User,
+		"channel", event.Channel,
+		"thread_ts", threadTS)
 
 	cleanText := c.removeBotMention(event.Text)
 
@@ -274,7 +274,7 @@ func (c *Connector) handleAppMentionEvent(ctx context.Context, event *slackevent
 		Message:  cleanText,
 	}, agentCfg, cwd)
 	if err != nil {
-		c.logger.Error("Error from ACP executor", logger.ErrorField(err))
+		c.logger.Errorw("Error from ACP executor", "error", err)
 		_, _, _ = c.client.PostMessage(event.Channel,
 			slack.MsgOptionText("Sorry, I encountered an error processing your message.", false),
 			slack.MsgOptionTS(threadTS))
@@ -286,7 +286,7 @@ func (c *Connector) handleAppMentionEvent(ctx context.Context, event *slackevent
 			slack.MsgOptionText(resp.Text, false),
 			slack.MsgOptionTS(threadTS))
 		if err != nil {
-			c.logger.Error("Error sending message to Slack", logger.ErrorField(err))
+			c.logger.Errorw("Error sending message to Slack", "error", err)
 			return err
 		}
 	}

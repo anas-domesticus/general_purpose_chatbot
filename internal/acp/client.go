@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	acp "github.com/coder/acp-go-sdk"
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
+	"go.uber.org/zap"
 )
 
 var errNotSupported = &acp.RequestError{Code: -32601, Message: "not supported"}
@@ -26,12 +26,12 @@ type PermissionFunc func(ctx context.Context, req acp.RequestPermissionRequest) 
 type ChatbotACPClient struct {
 	mu             sync.Mutex
 	responseBuffer strings.Builder
-	log            logger.Logger
+	log            *zap.SugaredLogger
 	permissionFunc PermissionFunc // nil → auto-approve
 }
 
 // NewChatbotACPClient creates a new client that auto-approves all permissions.
-func NewChatbotACPClient(log logger.Logger) *ChatbotACPClient {
+func NewChatbotACPClient(log *zap.SugaredLogger) *ChatbotACPClient {
 	return &ChatbotACPClient{
 		log: log,
 	}
@@ -57,9 +57,9 @@ func (c *ChatbotACPClient) SessionUpdate(_ context.Context, n acp.SessionNotific
 	}
 
 	if u.ToolCall != nil {
-		c.log.Debug("acp: tool call",
-			logger.StringField("title", u.ToolCall.Title),
-			logger.StringField("status", string(u.ToolCall.Status)),
+		c.log.Debugw("acp: tool call",
+			"title", u.ToolCall.Title,
+			"status", string(u.ToolCall.Status),
 		)
 	}
 
@@ -83,7 +83,7 @@ func (c *ChatbotACPClient) RequestPermission(ctx context.Context, params acp.Req
 	// Default: auto-approve by selecting the first allow option.
 	for _, opt := range params.Options {
 		if opt.Kind == acp.PermissionOptionKindAllowOnce || opt.Kind == acp.PermissionOptionKindAllowAlways {
-			c.log.Debug("acp: auto-approving permission", logger.StringField("option", string(opt.OptionId)))
+			c.log.Debugw("acp: auto-approving permission", "option", string(opt.OptionId))
 			return acp.RequestPermissionResponse{
 				Outcome: acp.RequestPermissionOutcome{
 					Selected: &acp.RequestPermissionOutcomeSelected{

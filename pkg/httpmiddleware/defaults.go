@@ -5,19 +5,19 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"github.com/unrolled/secure"
+	"go.uber.org/zap"
 )
 
 // Config holds configuration for HTTP middleware application.
 // Use DefaultConfig() for sensible defaults, then customize as needed.
 type Config struct {
 	// Core middleware settings
-	Logger      logger.Logger   // Required for logging middleware
-	StripPrefix string          // Path prefix to strip (e.g., "/api/v1")
-	CORS        *CORSConfig     // CORS configuration
-	Security    *secure.Options // Security headers configuration
-	Timeout     time.Duration   // Request timeout duration
+	Logger      *zap.SugaredLogger // Required for logging middleware
+	StripPrefix string             // Path prefix to strip (e.g., "/api/v1")
+	CORS        *CORSConfig        // CORS configuration
+	Security    *secure.Options    // Security headers configuration
+	Timeout     time.Duration      // Request timeout duration
 
 	// Feature flags for optional middleware
 	EnableCorrelationID bool // Add correlation ID to requests
@@ -79,7 +79,7 @@ func ApplyToRouter(router chi.Router, config Config) {
 
 // WithLogger is a convenience function that applies middleware with logging enabled.
 // Uses DefaultConfig() with the provided logger and EnableLogging=true.
-func WithLogger(router chi.Router, log logger.Logger) {
+func WithLogger(router chi.Router, log *zap.SugaredLogger) {
 	config := DefaultConfig()
 	config.Logger = log
 	config.EnableLogging = true

@@ -9,17 +9,13 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
+	"go.uber.org/zap"
 )
 
 func TestListen(t *testing.T) {
 	t.Run("starts server successfully", func(t *testing.T) {
 		// Create a test logger
-		log := logger.NewLogger(logger.Config{
-			Level:   logger.InfoLevel,
-			Format:  "json",
-			Service: "test",
-		})
+		log := zap.NewNop().Sugar()
 
 		// Create a gRPC server
 		server := grpc.NewServer()
@@ -63,11 +59,7 @@ func TestListen(t *testing.T) {
 	})
 
 	t.Run("fails with invalid port", func(t *testing.T) {
-		log := logger.NewLogger(logger.Config{
-			Level:   logger.InfoLevel,
-			Format:  "json",
-			Service: "test",
-		})
+		log := zap.NewNop().Sugar()
 
 		server := grpc.NewServer()
 		defer server.Stop()
@@ -80,11 +72,7 @@ func TestListen(t *testing.T) {
 	})
 
 	t.Run("fails with port already in use", func(t *testing.T) {
-		log := logger.NewLogger(logger.Config{
-			Level:   logger.InfoLevel,
-			Format:  "json",
-			Service: "test",
-		})
+		log := zap.NewNop().Sugar()
 
 		// Find an available port and occupy it
 		listener, err := net.Listen("tcp", ":0")

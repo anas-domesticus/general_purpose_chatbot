@@ -9,8 +9,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
-
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
 
 const (
@@ -63,8 +61,8 @@ func (h *HealthChecker) RegisterWithGRPCAndInterval(server *grpc.Server, updateI
 	go updater.run()
 
 	if h.logger != nil {
-		h.logger.Info("gRPC health service registered",
-			logger.StringField("update_interval", updateInterval.String()),
+		h.logger.Infow("gRPC health service registered",
+			"update_interval", updateInterval.String(),
 		)
 	}
 
@@ -104,8 +102,8 @@ func (u *grpcHealthUpdater) updateHealth() {
 	if err != nil || !status.Healthy {
 		u.healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
 		if u.checker.logger != nil {
-			u.checker.logger.Debug("gRPC health status: NOT_SERVING",
-				logger.StringField("reason", "readiness check failed"),
+			u.checker.logger.Debugw("gRPC health status: NOT_SERVING",
+				"reason", "readiness check failed",
 			)
 		}
 	} else {

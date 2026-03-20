@@ -6,17 +6,17 @@ import (
 
 	acp "github.com/coder/acp-go-sdk"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/config"
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
+	"go.uber.org/zap"
 )
 
 // Executor sends prompts to ACP agent processes and collects responses.
 type Executor struct {
 	processManager *ProcessManager
-	log            logger.Logger
+	log            *zap.SugaredLogger
 }
 
 // NewExecutor creates a new Executor.
-func NewExecutor(log logger.Logger) *Executor {
+func NewExecutor(log *zap.SugaredLogger) *Executor {
 	return &Executor{
 		processManager: NewProcessManager(log),
 		log:            log,
@@ -33,7 +33,7 @@ func (e *Executor) Execute(ctx context.Context, req Request, agentCfg config.ACP
 	// Check if process is dead and recreate.
 	select {
 	case <-proc.done:
-		e.log.Warn("acp executor: process died, recreating", logger.StringField("scope", req.ScopeKey))
+		e.log.Warnw("acp executor: process died, recreating", "scope", req.ScopeKey)
 		_ = e.processManager.Remove(req.ScopeKey)
 		proc, err = e.processManager.GetOrCreate(ctx, req.ScopeKey, agentCfg, cwd)
 		if err != nil {
@@ -67,9 +67,9 @@ func (e *Executor) Execute(ctx context.Context, req Request, agentCfg config.ACP
 		return Response{}, fmt.Errorf("acp executor: prompt: %w", err)
 	}
 
-	e.log.Debug("acp executor: prompt completed",
-		logger.StringField("scope", req.ScopeKey),
-		logger.StringField("stop_reason", string(promptResp.StopReason)),
+	e.log.Debugw("acp executor: prompt completed",
+		"scope", req.ScopeKey,
+		"stop_reason", string(promptResp.StopReason),
 	)
 
 	text := proc.client.GetResponse()

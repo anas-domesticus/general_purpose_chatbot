@@ -8,9 +8,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -38,11 +38,11 @@ type Metrics struct {
 
 	stopChan chan os.Signal
 	errChan  chan error
-	log      logger.Logger
+	log      *zap.SugaredLogger
 }
 
 // NewMetrics creates a new Metrics instance with the specified collectors enabled.
-func NewMetrics(httpCounters, grpcCounters, jobMetrics bool, l logger.Logger) Metrics {
+func NewMetrics(httpCounters, grpcCounters, jobMetrics bool, l *zap.SugaredLogger) Metrics {
 	m := Metrics{
 		reg: prometheus.NewRegistry(),
 		log: l,
@@ -92,7 +92,7 @@ func NewMetrics(httpCounters, grpcCounters, jobMetrics bool, l logger.Logger) Me
 
 // Listen starts the metrics HTTP server on the specified port.
 func (m *Metrics) Listen(port int) {
-	m.log.Info("Starting metrics listener", logger.IntField("port", port))
+	m.log.Infow("Starting metrics listener", "port", port)
 	mux := http.NewServeMux()
 	mux.Handle("/", http.NotFoundHandler())
 	mux.Handle("/metrics", promhttp.HandlerFor(m.reg, promhttp.HandlerOpts{}))

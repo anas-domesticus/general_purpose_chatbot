@@ -6,16 +6,16 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
+	"go.uber.org/zap"
 )
 
 // HTTPLogger provides HTTP request/response logging middleware
 type HTTPLogger struct {
-	logger logger.Logger
+	logger *zap.SugaredLogger
 }
 
 // NewHTTPLogger creates a new HTTP logger middleware
-func NewHTTPLogger(log logger.Logger) *HTTPLogger {
+func NewHTTPLogger(log *zap.SugaredLogger) *HTTPLogger {
 	return &HTTPLogger{
 		logger: log,
 	}
@@ -30,11 +30,11 @@ func (h *HTTPLogger) Middleware(next http.Handler) http.Handler {
 		correlationID := r.Header.Get("X-Correlation-ID")
 
 		// Create logger with request fields
-		requestLogger := h.logger.WithFields(
-			logger.ClientIPField(r.RemoteAddr),
-			logger.HTTPMethodField(r.Method),
-			logger.HTTPPathField(r.URL.Path),
-			logger.CorrelationIDField(correlationID),
+		requestLogger := h.logger.With(
+			"client_ip", r.RemoteAddr,
+			"http_method", r.Method,
+			"http_path", r.URL.Path,
+			"correlation_id", correlationID,
 		)
 
 		// Log incoming request
@@ -50,10 +50,10 @@ func (h *HTTPLogger) Middleware(next http.Handler) http.Handler {
 		duration := time.Since(start)
 
 		// Log response
-		responseLogger := requestLogger.WithFields(
-			logger.StringField("http_status", strconv.Itoa(wrappedWriter.Status())),
-			logger.StringField("response_bytes", strconv.Itoa(wrappedWriter.BytesWritten())),
-			logger.DurationField("duration", duration),
+		responseLogger := requestLogger.With(
+			"http_status", strconv.Itoa(wrappedWriter.Status()),
+			"response_bytes", strconv.Itoa(wrappedWriter.BytesWritten()),
+			"duration", duration,
 		)
 
 		responseLogger.Info("HTTP response sent")
@@ -61,14 +61,14 @@ func (h *HTTPLogger) Middleware(next http.Handler) http.Handler {
 }
 
 // RequestLogger creates a logger with request context for use in handlers
-func (h *HTTPLogger) RequestLogger(r *http.Request) logger.Logger {
+func (h *HTTPLogger) RequestLogger(r *http.Request) *zap.SugaredLogger {
 	// Get correlation ID from header (guaranteed to be valid UUID by correlation middleware)
 	correlationID := r.Header.Get("X-Correlation-ID")
 
-	return h.logger.WithFields(
-		logger.ClientIPField(r.RemoteAddr),
-		logger.HTTPMethodField(r.Method),
-		logger.HTTPPathField(r.URL.Path),
-		logger.CorrelationIDField(correlationID),
+	return h.logger.With(
+		"client_ip", r.RemoteAddr,
+		"http_method", r.Method,
+		"http_path", r.URL.Path,
+		"correlation_id", correlationID,
 	)
 }

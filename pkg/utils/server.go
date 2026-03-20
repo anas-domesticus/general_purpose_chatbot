@@ -1,8 +1,8 @@
 package utils //nolint:revive // var-naming: utils is an acceptable package name for shared utilities
 
 import (
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/metrics"
+	"go.uber.org/zap"
 )
 
 // ServerConfig represents configuration options for creating a Server.
@@ -14,7 +14,7 @@ type ServerConfig struct {
 
 // Server represents a server configuration with logging, metrics, and port settings.
 type Server struct {
-	Log            logger.Logger
+	Log            *zap.SugaredLogger
 	GrpcListenPort int
 	HTTPListenPort int
 	Metrics        metrics.Metrics
@@ -31,7 +31,7 @@ type Server struct {
 //		Metrics:        metrics,
 //	}
 //	server := NewServer(logger, config)
-func NewServer(log logger.Logger, config *ServerConfig) Server {
+func NewServer(log *zap.SugaredLogger, config *ServerConfig) Server {
 	server := Server{
 		Log:            log,
 		GrpcListenPort: 8000, // default gRPC port

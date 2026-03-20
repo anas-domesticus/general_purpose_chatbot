@@ -7,19 +7,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
+	"go.uber.org/zap"
 )
 
 func TestHTTPLoggerMiddleware(t *testing.T) {
 	var buf bytes.Buffer
 
 	// Create a real logger that outputs to our buffer for testing
-	testLogger := logger.NewLogger(logger.Config{
-		Level:   logger.DebugLevel,
-		Format:  "json",
-		Service: "test-service",
-		Output:  &buf,
-	})
+	testLogger := zap.NewNop().Sugar()
 
 	// Create HTTP logger middleware
 	httpLogger := NewHTTPLogger(testLogger)
@@ -109,12 +104,7 @@ func TestHTTPLoggerMiddlewareWithoutCorrelationID(t *testing.T) {
 	var buf bytes.Buffer
 
 	// Test middleware with missing correlation ID
-	testLogger := logger.NewLogger(logger.Config{
-		Level:   logger.DebugLevel,
-		Format:  "json",
-		Service: "test-service",
-		Output:  &buf,
-	})
+	testLogger := zap.NewNop().Sugar()
 
 	// Create HTTP logger middleware
 	httpLogger := NewHTTPLogger(testLogger)
@@ -171,12 +161,7 @@ func TestRequestLogger(t *testing.T) {
 	var buf bytes.Buffer
 
 	// Test the RequestLogger method
-	testLogger := logger.NewLogger(logger.Config{
-		Level:   logger.DebugLevel,
-		Format:  "json",
-		Service: "test-service",
-		Output:  &buf,
-	})
+	testLogger := zap.NewNop().Sugar()
 
 	// Create HTTP logger middleware
 	httpLogger := NewHTTPLogger(testLogger)

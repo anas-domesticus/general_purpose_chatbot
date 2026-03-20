@@ -3,9 +3,8 @@ package config
 
 import (
 	"fmt"
-	"strings"
 
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
+	"go.uber.org/zap"
 )
 
 // AppConfig holds all application configuration.
@@ -31,30 +30,16 @@ func (c *AppConfig) Validate() error {
 	return nil
 }
 
-// GetLogLevel returns the parsed logger level.
-func (c *AppConfig) GetLogLevel() logger.Level {
-	switch strings.ToLower(c.Logging.Level) {
-	case "debug":
-		return logger.DebugLevel
-	case "warn", "warning":
-		return logger.WarnLevel
-	case "error":
-		return logger.ErrorLevel
-	default:
-		return logger.InfoLevel
-	}
-}
-
 // LogConfig logs the current configuration (without sensitive data).
-func (c *AppConfig) LogConfig(log logger.Logger) {
-	log.Info("Application configuration loaded",
-		logger.StringField("service_name", c.ServiceName),
-		logger.StringField("version", c.Version),
-		logger.StringField("environment", c.Environment),
-		logger.StringField("log_level", c.Logging.Level),
-		logger.StringField("log_format", c.Logging.Format),
-		logger.IntField("acp_agents", len(c.ACP.Agents)),
-		logger.BoolField("slack_enabled", c.Slack.Enabled()),
-		logger.BoolField("telegram_enabled", c.Telegram.Enabled()),
+func (c *AppConfig) LogConfig(log *zap.SugaredLogger) {
+	log.Infow("Application configuration loaded",
+		"service_name", c.ServiceName,
+		"version", c.Version,
+		"environment", c.Environment,
+		"log_level", c.Logging.Level,
+		"log_format", c.Logging.Format,
+		"acp_agents", len(c.ACP.Agents),
+		"slack_enabled", c.Slack.Enabled(),
+		"telegram_enabled", c.Telegram.Enabled(),
 	)
 }

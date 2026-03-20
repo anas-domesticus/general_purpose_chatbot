@@ -6,11 +6,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	appconfig "github.com/lewisedginton/general_purpose_chatbot/internal/config"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/server"
 	pkgconfig "github.com/lewisedginton/general_purpose_chatbot/pkg/config"
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -23,25 +24,32 @@ func main() {
 		os.Exit(1)
 	}
 
-	log := logger.NewLogger(logger.Config{
-		Level:   cfg.GetLogLevel(),
-		Format:  cfg.Logging.Format,
-		Service: cfg.ServiceName,
-	})
+	// Create zap logger based on config.
+	var zapLogger *zap.Logger
+	var err error
+	if strings.EqualFold(cfg.Logging.Level, "debug") {
+		zapLogger, err = zap.NewDevelopment()
+	} else {
+		zapLogger, err = zap.NewProduction()
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create logger: %v\n", err)
+		os.Exit(1)
+	}
+	defer func() { _ = zapLogger.Sync() }()
+
+	log := zapLogger.Sugar().With("service", cfg.ServiceName)
 
 	cfg.LogConfig(log)
 
-	log.Info("Starting ACP Chatbot",
-		logger.StringField("version", cfg.Version))
+	log.Infow("Starting ACP Chatbot", "version", cfg.Version)
 
 	srv, err := server.New(context.Background(), cfg, log)
 	if err != nil {
-		log.Error("Failed to create server", logger.ErrorField(err))
-		os.Exit(1)
+		log.Fatalw("Failed to create server", "error", err)
 	}
 
 	if err := srv.Run(); err != nil {
-		log.Error("Server error", logger.ErrorField(err))
-		os.Exit(1)
+		log.Fatalw("Server error", "error", err)
 	}
 }

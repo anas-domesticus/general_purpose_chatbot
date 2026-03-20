@@ -3,8 +3,6 @@ package health
 import (
 	"encoding/json"
 	"net/http"
-
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
 
 // HealthResponse represents the JSON response structure for HTTP health check endpoints.
@@ -78,8 +76,8 @@ func (h *HealthChecker) writeHealthResponse(w http.ResponseWriter, status *Healt
 	// Marshal and write response
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		if h.logger != nil {
-			h.logger.Error("Failed to encode health response",
-				logger.StringField("error", err.Error()),
+			h.logger.Errorw("Failed to encode health response",
+				"error", err.Error(),
 			)
 		}
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)

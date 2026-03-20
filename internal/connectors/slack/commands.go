@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 	goslack "github.com/slack-go/slack"
 	"github.com/slack-go/slack/socketmode"
 )
@@ -66,21 +65,21 @@ func (c *Connector) setupCommands() {
 func (c *Connector) handleSlashCommand(ctx context.Context, envelope socketmode.Event) {
 	cmd, ok := envelope.Data.(goslack.SlashCommand)
 	if !ok {
-		c.logger.Warn("Failed to parse slash command data", logger.StringField("data", fmt.Sprintf("%+v", envelope.Data)))
+		c.logger.Warnw("Failed to parse slash command data", "data", fmt.Sprintf("%+v", envelope.Data))
 		c.socketMode.Ack(*envelope.Request)
 		return
 	}
 
-	c.logger.Info("Received slash command",
-		logger.StringField("command", cmd.Command),
-		logger.StringField("user_id", cmd.UserID),
-		logger.StringField("channel_id", cmd.ChannelID))
+	c.logger.Infow("Received slash command",
+		"command", cmd.Command,
+		"user_id", cmd.UserID,
+		"channel_id", cmd.ChannelID)
 
 	response, err := c.commands.Handle(ctx, cmd)
 	if err != nil {
-		c.logger.Error("Error handling command",
-			logger.StringField("command", cmd.Command),
-			logger.ErrorField(err))
+		c.logger.Errorw("Error handling command",
+			"command", cmd.Command,
+			"error", err)
 		response = map[string]interface{}{
 			"text": "An error occurred while processing your command.",
 		}

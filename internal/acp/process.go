@@ -9,7 +9,7 @@ import (
 
 	acp "github.com/coder/acp-go-sdk"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/config"
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
+	"go.uber.org/zap"
 )
 
 // AgentProcess represents a running ACP agent subprocess.
@@ -27,11 +27,11 @@ type AgentProcess struct {
 type ProcessManager struct {
 	processes map[string]*AgentProcess
 	mu        sync.RWMutex
-	log       logger.Logger
+	log       *zap.SugaredLogger
 }
 
 // NewProcessManager creates a new ProcessManager.
-func NewProcessManager(log logger.Logger) *ProcessManager {
+func NewProcessManager(log *zap.SugaredLogger) *ProcessManager {
 	return &ProcessManager{
 		processes: make(map[string]*AgentProcess),
 		log:       log,
@@ -47,7 +47,7 @@ func (pm *ProcessManager) GetOrCreate(ctx context.Context, scopeKey string, agen
 		select {
 		case <-p.done:
 			// Process died — clean up and respawn below.
-			pm.log.Warn("acp: process dead, respawning", logger.StringField("scope", scopeKey))
+			pm.log.Warnw("acp: process dead, respawning", "scope", scopeKey)
 			delete(pm.processes, scopeKey)
 		default:
 			return p, nil
@@ -117,7 +117,7 @@ func (pm *ProcessManager) spawn(ctx context.Context, scopeKey string, agentCfg c
 			ModeId:    acp.SessionModeId(agentCfg.DefaultMode),
 		})
 		if err != nil {
-			pm.log.Warn("acp: set session mode failed", logger.ErrorField(err))
+			pm.log.Warnw("acp: set session mode failed", "error", err)
 		}
 	}
 
@@ -128,13 +128,13 @@ func (pm *ProcessManager) spawn(ctx context.Context, scopeKey string, agentCfg c
 			ModelId:   acp.ModelId(agentCfg.DefaultModel),
 		})
 		if err != nil {
-			pm.log.Warn("acp: set session model failed", logger.ErrorField(err))
+			pm.log.Warnw("acp: set session model failed", "error", err)
 		}
 	}
 
-	pm.log.Info("acp: process spawned",
-		logger.StringField("scope", scopeKey),
-		logger.StringField("session", string(sessResp.SessionId)),
+	pm.log.Infow("acp: process spawned",
+		"scope", scopeKey,
+		"session", string(sessResp.SessionId),
 	)
 
 	return &AgentProcess{

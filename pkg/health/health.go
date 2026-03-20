@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
+	"go.uber.org/zap"
 )
 
 // Check represents a single health check that can succeed or fail.
@@ -66,7 +66,7 @@ type HealthChecker struct {
 	timeout          time.Duration
 	failureCount     map[string]int // Track consecutive failures per check
 	failureThreshold int            // Number of consecutive failures before reporting unhealthy
-	logger           logger.Logger
+	logger           *zap.SugaredLogger
 	mu               sync.RWMutex
 }
 
@@ -82,7 +82,7 @@ func WithTimeout(d time.Duration) Option {
 }
 
 // WithLogger sets the logger for health check operations.
-func WithLogger(l logger.Logger) Option {
+func WithLogger(l *zap.SugaredLogger) Option {
 	return func(h *HealthChecker) {
 		h.logger = l
 	}
@@ -215,22 +215,22 @@ func (h *HealthChecker) executeCheck(parentCtx context.Context, check Check) Che
 			result.Error = err.Error()
 
 			if h.logger != nil {
-				h.logger.Warn("Health check failed",
-					logger.StringField("check", check.Name()),
-					logger.StringField("error", err.Error()),
-					logger.IntField("failures", h.failureCount[check.Name()]),
-					logger.DurationField("latency", latency),
+				h.logger.Warnw("Health check failed",
+					"check", check.Name(),
+					"error", err.Error(),
+					"failures", h.failureCount[check.Name()],
+					"latency", latency,
 				)
 			}
 		} else {
 			// Not enough failures yet - report as healthy
 			result.Healthy = true
 			if h.logger != nil {
-				h.logger.Debug("Health check failed but below threshold",
-					logger.StringField("check", check.Name()),
-					logger.StringField("error", err.Error()),
-					logger.IntField("failures", h.failureCount[check.Name()]),
-					logger.IntField("threshold", h.failureThreshold),
+				h.logger.Debugw("Health check failed but below threshold",
+					"check", check.Name(),
+					"error", err.Error(),
+					"failures", h.failureCount[check.Name()],
+					"threshold", h.failureThreshold,
 				)
 			}
 		}
@@ -240,9 +240,9 @@ func (h *HealthChecker) executeCheck(parentCtx context.Context, check Check) Che
 		result.Healthy = true
 
 		if h.logger != nil {
-			h.logger.Debug("Health check passed",
-				logger.StringField("check", check.Name()),
-				logger.DurationField("latency", latency),
+			h.logger.Debugw("Health check passed",
+				"check", check.Name(),
+				"latency", latency,
 			)
 		}
 	}
