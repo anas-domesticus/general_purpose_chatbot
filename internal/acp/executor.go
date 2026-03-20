@@ -3,6 +3,8 @@ package acpclient
 import (
 	"context"
 	"fmt"
+	"runtime"
+	"time"
 
 	acp "github.com/coder/acp-go-sdk"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/config"
@@ -66,9 +68,19 @@ func (e *Executor) Execute(ctx context.Context, req Request, agentCfg config.ACP
 		return Response{}, fmt.Errorf("acp executor: prompt for scope %q: %w", req.ScopeKey, err)
 	}
 
-	// The ACP SDK dispatches SessionUpdate notifications in separate goroutines
-	// while delivering the PromptResponse synchronously. Wait for any in-flight
-	// notification handlers to finish writing to the response buffer.
+	// The ACP SDK dispatches SessionUpdate notifications via `go handleInbound()`
+	// while delivering the PromptResponse synchronously on the receive goroutine.
+	// This means Prompt() can return before notification goroutines have even been
+	// scheduled by the Go runtime. The WaitGroup.Add(1) inside SessionUpdate won't
+	// have executed yet, so WaitForPendingUpdates() alone would see zero pending
+	// items and return immediately.
+	//
+	// We yield the processor and sleep briefly to let the Go scheduler run any
+	// already-spawned notification goroutines (they exist but haven't been
+	// scheduled yet). Then WaitForPendingUpdates() catches any that are still
+	// mid-execution.
+	runtime.Gosched()
+	time.Sleep(100 * time.Millisecond)
 	proc.client.WaitForPendingUpdates()
 
 	text := FormatResponse(proc.client.GetResponse(), promptResp.StopReason)
