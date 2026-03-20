@@ -48,23 +48,48 @@ func (c *ChatbotACPClient) WithPermissionFunc(fn PermissionFunc) {
 func (c *ChatbotACPClient) SessionUpdate(_ context.Context, n acp.SessionNotification) error {
 	u := n.Update
 
-	if u.AgentMessageChunk != nil {
+	switch {
+	case u.AgentMessageChunk != nil:
 		if u.AgentMessageChunk.Content.Text != nil {
+			chunk := u.AgentMessageChunk.Content.Text.Text
+			c.log.Debugw("acp: agent message chunk",
+				"session", string(n.SessionId), "chunk_len", len(chunk))
 			c.mu.Lock()
-			c.responseBuffer.WriteString(u.AgentMessageChunk.Content.Text.Text)
+			c.responseBuffer.WriteString(chunk)
 			c.mu.Unlock()
+		} else {
+			c.log.Debugw("acp: agent message chunk with no text content",
+				"session", string(n.SessionId),
+				"has_image", u.AgentMessageChunk.Content.Image != nil,
+				"has_audio", u.AgentMessageChunk.Content.Audio != nil,
+				"has_resource", u.AgentMessageChunk.Content.Resource != nil,
+				"has_resource_link", u.AgentMessageChunk.Content.ResourceLink != nil,
+			)
 		}
-	}
-
-	if u.ToolCall != nil {
+	case u.AgentThoughtChunk != nil:
+		c.log.Debugw("acp: agent thought chunk", "session", string(n.SessionId))
+	case u.ToolCall != nil:
 		c.log.Debugw("acp: tool call",
+			"session", string(n.SessionId),
 			"title", u.ToolCall.Title,
 			"status", string(u.ToolCall.Status),
 		)
-	}
-
-	if u.Plan != nil {
-		c.log.Debug("acp: plan update")
+	case u.ToolCallUpdate != nil:
+		c.log.Debugw("acp: tool call update",
+			"session", string(n.SessionId),
+			"tool_call_id", string(u.ToolCallUpdate.ToolCallId),
+			"status", u.ToolCallUpdate.Status,
+		)
+	case u.Plan != nil:
+		c.log.Debugw("acp: plan update", "session", string(n.SessionId))
+	case u.UserMessageChunk != nil:
+		c.log.Debugw("acp: user message chunk", "session", string(n.SessionId))
+	case u.CurrentModeUpdate != nil:
+		c.log.Debugw("acp: mode update", "session", string(n.SessionId))
+	case u.AvailableCommandsUpdate != nil:
+		c.log.Debugw("acp: available commands update", "session", string(n.SessionId))
+	default:
+		c.log.Warnw("acp: unknown session update type", "session", string(n.SessionId))
 	}
 
 	return nil

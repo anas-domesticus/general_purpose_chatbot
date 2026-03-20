@@ -6,12 +6,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 
 	appconfig "github.com/lewisedginton/general_purpose_chatbot/internal/config"
 	"github.com/lewisedginton/general_purpose_chatbot/internal/server"
 	pkgconfig "github.com/lewisedginton/general_purpose_chatbot/pkg/config"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 func main() {
@@ -24,14 +24,23 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create zap logger based on config.
-	var zapLogger *zap.Logger
-	var err error
-	if strings.EqualFold(cfg.Logging.Level, "debug") {
-		zapLogger, err = zap.NewDevelopment()
-	} else {
-		zapLogger, err = zap.NewProduction()
+	// Parse the configured log level. Supported values: debug, info, warn, error.
+	var level zapcore.Level
+	if err := level.UnmarshalText([]byte(cfg.Logging.Level)); err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid log level %q: %v\n", cfg.Logging.Level, err)
+		os.Exit(1)
 	}
+
+	// Use development config for debug (human-readable), production for everything else.
+	var zapCfg zap.Config
+	if level <= zapcore.DebugLevel {
+		zapCfg = zap.NewDevelopmentConfig()
+	} else {
+		zapCfg = zap.NewProductionConfig()
+	}
+	zapCfg.Level = zap.NewAtomicLevelAt(level)
+
+	zapLogger, err := zapCfg.Build()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create logger: %v\n", err)
 		os.Exit(1)
