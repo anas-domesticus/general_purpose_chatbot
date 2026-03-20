@@ -1,3 +1,5 @@
+// Package acpclient provides the ACP (Agent Client Protocol) client
+// implementation for bridging messaging platforms to ACP-compatible agents.
 package acpclient
 
 import (
@@ -8,6 +10,8 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 	"github.com/lewisedginton/general_purpose_chatbot/pkg/logger"
 )
+
+var errNotSupported = &acp.RequestError{Code: -32601, Message: "not supported"}
 
 // ChatbotACPClient implements the acp.Client interface, collecting agent
 // output into a buffer and handling permission requests.
@@ -26,6 +30,7 @@ func NewChatbotACPClient(autoApprove bool, log logger.Logger) *ChatbotACPClient 
 	}
 }
 
+// SessionUpdate handles agent session notifications, buffering text responses.
 func (c *ChatbotACPClient) SessionUpdate(_ context.Context, n acp.SessionNotification) error {
 	u := n.Update
 
@@ -51,6 +56,7 @@ func (c *ChatbotACPClient) SessionUpdate(_ context.Context, n acp.SessionNotific
 	return nil
 }
 
+// RequestPermission handles tool permission requests from the agent.
 func (c *ChatbotACPClient) RequestPermission(_ context.Context, params acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
 	if c.autoApprove {
 		for _, opt := range params.Options {
@@ -84,37 +90,44 @@ func (c *ChatbotACPClient) RequestPermission(_ context.Context, params acp.Reque
 	// No suitable option found — cancel.
 	return acp.RequestPermissionResponse{
 		Outcome: acp.RequestPermissionOutcome{
-			Cancelled: &acp.RequestPermissionOutcomeCancelled{},
+			Cancelled: &acp.RequestPermissionOutcomeCancelled{}, //nolint:misspell // SDK type name
 		},
 	}, nil
 }
 
+// ReadTextFile is not supported — capabilities advertised as false.
 func (c *ChatbotACPClient) ReadTextFile(context.Context, acp.ReadTextFileRequest) (acp.ReadTextFileResponse, error) {
-	return acp.ReadTextFileResponse{}, &acp.RequestError{Code: -32601, Message: "not supported"}
+	return acp.ReadTextFileResponse{}, errNotSupported
 }
 
+// WriteTextFile is not supported — capabilities advertised as false.
 func (c *ChatbotACPClient) WriteTextFile(context.Context, acp.WriteTextFileRequest) (acp.WriteTextFileResponse, error) {
-	return acp.WriteTextFileResponse{}, &acp.RequestError{Code: -32601, Message: "not supported"}
+	return acp.WriteTextFileResponse{}, errNotSupported
 }
 
+// CreateTerminal is not supported — capabilities advertised as false.
 func (c *ChatbotACPClient) CreateTerminal(context.Context, acp.CreateTerminalRequest) (acp.CreateTerminalResponse, error) {
-	return acp.CreateTerminalResponse{}, &acp.RequestError{Code: -32601, Message: "not supported"}
+	return acp.CreateTerminalResponse{}, errNotSupported
 }
 
+// KillTerminalCommand is not supported — capabilities advertised as false.
 func (c *ChatbotACPClient) KillTerminalCommand(context.Context, acp.KillTerminalCommandRequest) (acp.KillTerminalCommandResponse, error) {
-	return acp.KillTerminalCommandResponse{}, &acp.RequestError{Code: -32601, Message: "not supported"}
+	return acp.KillTerminalCommandResponse{}, errNotSupported
 }
 
+// TerminalOutput is not supported — capabilities advertised as false.
 func (c *ChatbotACPClient) TerminalOutput(context.Context, acp.TerminalOutputRequest) (acp.TerminalOutputResponse, error) {
-	return acp.TerminalOutputResponse{}, &acp.RequestError{Code: -32601, Message: "not supported"}
+	return acp.TerminalOutputResponse{}, errNotSupported
 }
 
+// ReleaseTerminal is not supported — capabilities advertised as false.
 func (c *ChatbotACPClient) ReleaseTerminal(context.Context, acp.ReleaseTerminalRequest) (acp.ReleaseTerminalResponse, error) {
-	return acp.ReleaseTerminalResponse{}, &acp.RequestError{Code: -32601, Message: "not supported"}
+	return acp.ReleaseTerminalResponse{}, errNotSupported
 }
 
+// WaitForTerminalExit is not supported — capabilities advertised as false.
 func (c *ChatbotACPClient) WaitForTerminalExit(context.Context, acp.WaitForTerminalExitRequest) (acp.WaitForTerminalExitResponse, error) {
-	return acp.WaitForTerminalExitResponse{}, &acp.RequestError{Code: -32601, Message: "not supported"}
+	return acp.WaitForTerminalExitResponse{}, errNotSupported
 }
 
 // GetResponse returns the accumulated response text.

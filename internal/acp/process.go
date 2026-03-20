@@ -63,7 +63,7 @@ func (pm *ProcessManager) GetOrCreate(ctx context.Context, scopeKey string, agen
 }
 
 func (pm *ProcessManager) spawn(ctx context.Context, scopeKey string, agentCfg config.ACPAgentConfig, cwd string) (*AgentProcess, error) {
-	cmd := exec.CommandContext(ctx, agentCfg.Command, agentCfg.Args...)
+	cmd := exec.CommandContext(ctx, agentCfg.Command, agentCfg.Args...) //nolint:gosec // command is from trusted config
 	cmd.Dir = cwd
 	cmd.Env = os.Environ()
 	for k, v := range agentCfg.Env {

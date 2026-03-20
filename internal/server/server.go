@@ -1,3 +1,4 @@
+// Package server provides the top-level application server.
 package server
 
 import (
@@ -18,7 +19,6 @@ type Server struct {
 	acpExecutor    *acpclient.Executor
 	acpRouter      *acpclient.Router
 	slackConnector *slack.Connector
-	cancel         context.CancelFunc
 }
 
 // New creates a new Server with the given configuration.

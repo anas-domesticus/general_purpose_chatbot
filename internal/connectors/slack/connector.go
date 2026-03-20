@@ -23,8 +23,6 @@ type Connector struct {
 	commands    *CommandRegistry
 	connected   bool
 	mu          sync.RWMutex
-	botUserID   string
-	initOnce    sync.Once
 }
 
 // Config holds configuration for the Slack connector.
@@ -80,87 +78,102 @@ func (c *Connector) Start(ctx context.Context) error {
 
 	go func() {
 		for envelope := range c.socketMode.Events {
-			switch envelope.Type {
-			case socketmode.EventTypeConnecting:
-				c.logger.Info("Connecting to Slack with Socket Mode")
-				c.mu.Lock()
-				c.connected = false
-				c.mu.Unlock()
-
-			case socketmode.EventTypeConnectionError:
-				c.logger.Error("Connection failed", logger.StringField("data", fmt.Sprintf("%v", envelope.Data)))
-				c.mu.Lock()
-				c.connected = false
-				c.mu.Unlock()
-
-			case socketmode.EventTypeConnected:
-				c.logger.Info("Connected to Slack with Socket Mode")
-				c.mu.Lock()
-				c.connected = true
-				c.mu.Unlock()
-
-			case socketmode.EventTypeHello:
-				// Hello event confirms WebSocket connection
-
-			case socketmode.EventTypeEventsAPI:
-				eventsAPIEvent, ok := envelope.Data.(slackevents.EventsAPIEvent)
-				if !ok {
-					c.logger.Warn("Ignored non-EventsAPI event", logger.StringField("data", fmt.Sprintf("%+v", envelope)))
-					continue
-				}
-				c.logger.Debug("Event received", logger.StringField("event_type", eventsAPIEvent.Type))
-				c.socketMode.Ack(*envelope.Request)
-				if err := c.handleEvent(ctx, eventsAPIEvent); err != nil {
-					c.logger.Error("Failed to handle event", logger.ErrorField(err))
-				}
-
-			case socketmode.EventTypeInteractive:
-				c.logger.Debug("Interactive event received")
-				c.socketMode.Ack(*envelope.Request)
-
-			case socketmode.EventTypeSlashCommand:
-				c.handleSlashCommand(ctx, envelope)
-
-			case socketmode.EventTypeIncomingError:
-				if err, ok := envelope.Data.(*slack.IncomingEventError); ok {
-					c.logger.Warn("Incoming event error from Slack", logger.ErrorField(err.ErrorObj))
-				} else {
-					c.logger.Warn("Incoming event error from Slack", logger.StringField("data", fmt.Sprintf("%+v", envelope.Data)))
-				}
-
-			case socketmode.EventTypeErrorWriteFailed:
-				if err, ok := envelope.Data.(*socketmode.ErrorWriteFailed); ok {
-					c.logger.Error("Failed to write to Slack WebSocket", logger.ErrorField(err.Cause))
-				} else {
-					c.logger.Error("Failed to write to Slack WebSocket", logger.StringField("data", fmt.Sprintf("%+v", envelope.Data)))
-				}
-
-			case socketmode.EventTypeErrorBadMessage:
-				if err, ok := envelope.Data.(*socketmode.ErrorBadMessage); ok {
-					c.logger.Warn("Bad message received from Slack", logger.ErrorField(err.Cause), logger.StringField("message", string(err.Message)))
-				} else {
-					c.logger.Warn("Bad message received from Slack", logger.StringField("data", fmt.Sprintf("%+v", envelope.Data)))
-				}
-
-			case socketmode.EventTypeInvalidAuth:
-				c.logger.Error("Invalid authentication for Slack Socket Mode")
-
-			case socketmode.EventTypeDisconnect:
-				c.logger.Warn("Disconnected from Slack Socket Mode")
-				c.mu.Lock()
-				c.connected = false
-				c.mu.Unlock()
-
-			default:
-				c.logger.Warn("Unsupported event type received",
-					logger.StringField("event_type", string(envelope.Type)),
-					logger.StringField("data", fmt.Sprintf("%+v", envelope.Data)),
-				)
-			}
+			c.handleSocketEvent(ctx, envelope)
 		}
 	}()
 
 	return c.socketMode.RunContext(ctx)
+}
+
+func (c *Connector) setConnected(connected bool) {
+	c.mu.Lock()
+	c.connected = connected
+	c.mu.Unlock()
+}
+
+//nolint:gocyclo // socket event dispatch is inherently a large switch
+func (c *Connector) handleSocketEvent(ctx context.Context, envelope socketmode.Event) {
+	switch envelope.Type {
+	case socketmode.EventTypeConnecting:
+		c.logger.Info("Connecting to Slack with Socket Mode")
+		c.setConnected(false)
+
+	case socketmode.EventTypeConnectionError:
+		c.logger.Error("Connection failed", logger.StringField("data", fmt.Sprintf("%v", envelope.Data)))
+		c.setConnected(false)
+
+	case socketmode.EventTypeConnected:
+		c.logger.Info("Connected to Slack with Socket Mode")
+		c.setConnected(true)
+
+	case socketmode.EventTypeHello:
+		// Hello event confirms WebSocket connection
+
+	case socketmode.EventTypeEventsAPI:
+		eventsAPIEvent, ok := envelope.Data.(slackevents.EventsAPIEvent)
+		if !ok {
+			c.logger.Warn("Ignored non-EventsAPI event", logger.StringField("data", fmt.Sprintf("%+v", envelope)))
+			return
+		}
+		c.logger.Debug("Event received", logger.StringField("event_type", eventsAPIEvent.Type))
+		c.socketMode.Ack(*envelope.Request)
+		if err := c.handleEvent(ctx, eventsAPIEvent); err != nil {
+			c.logger.Error("Failed to handle event", logger.ErrorField(err))
+		}
+
+	case socketmode.EventTypeInteractive:
+		c.logger.Debug("Interactive event received")
+		c.socketMode.Ack(*envelope.Request)
+
+	case socketmode.EventTypeSlashCommand:
+		c.handleSlashCommand(ctx, envelope)
+
+	case socketmode.EventTypeIncomingError:
+		c.handleIncomingError(envelope)
+
+	case socketmode.EventTypeErrorWriteFailed:
+		c.handleWriteError(envelope)
+
+	case socketmode.EventTypeErrorBadMessage:
+		c.handleBadMessage(envelope)
+
+	case socketmode.EventTypeInvalidAuth:
+		c.logger.Error("Invalid authentication for Slack Socket Mode")
+
+	case socketmode.EventTypeDisconnect:
+		c.logger.Warn("Disconnected from Slack Socket Mode")
+		c.setConnected(false)
+
+	default:
+		c.logger.Warn("Unsupported event type received",
+			logger.StringField("event_type", string(envelope.Type)),
+			logger.StringField("data", fmt.Sprintf("%+v", envelope.Data)),
+		)
+	}
+}
+
+func (c *Connector) handleIncomingError(envelope socketmode.Event) {
+	if err, ok := envelope.Data.(*slack.IncomingEventError); ok {
+		c.logger.Warn("Incoming event error from Slack", logger.ErrorField(err.ErrorObj))
+	} else {
+		c.logger.Warn("Incoming event error from Slack", logger.StringField("data", fmt.Sprintf("%+v", envelope.Data)))
+	}
+}
+
+func (c *Connector) handleWriteError(envelope socketmode.Event) {
+	if err, ok := envelope.Data.(*socketmode.ErrorWriteFailed); ok {
+		c.logger.Error("Failed to write to Slack WebSocket", logger.ErrorField(err.Cause))
+	} else {
+		c.logger.Error("Failed to write to Slack WebSocket", logger.StringField("data", fmt.Sprintf("%+v", envelope.Data)))
+	}
+}
+
+func (c *Connector) handleBadMessage(envelope socketmode.Event) {
+	if err, ok := envelope.Data.(*socketmode.ErrorBadMessage); ok {
+		c.logger.Warn("Bad message received from Slack", logger.ErrorField(err.Cause), logger.StringField("message", string(err.Message)))
+	} else {
+		c.logger.Warn("Bad message received from Slack", logger.StringField("data", fmt.Sprintf("%+v", envelope.Data)))
+	}
 }
 
 // handleEvent processes Slack events and routes them.

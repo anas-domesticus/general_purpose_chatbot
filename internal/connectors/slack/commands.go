@@ -1,3 +1,4 @@
+// Package slack implements the Slack Socket Mode connector for the ACP chatbot.
 package slack
 
 import (
@@ -53,7 +54,7 @@ Send me a DM or @mention me in a channel to chat!`
 	}, nil
 }
 
-// setupCommands initialises the command registry.
+// setupCommands initializes the command registry.
 func (c *Connector) setupCommands() {
 	c.commands = NewCommandRegistry()
 	c.commands.Register("/help", func(ctx context.Context, cmd goslack.SlashCommand) (interface{}, error) {
