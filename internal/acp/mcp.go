@@ -6,7 +6,11 @@ import (
 )
 
 // ConvertMCPServers converts config MCP server definitions to ACP SDK types.
+// Always returns a non-nil slice (empty slice when no servers configured).
 func ConvertMCPServers(servers []config.ACPMCPServer) []acp.McpServer {
+	if len(servers) == 0 {
+		return []acp.McpServer{}
+	}
 	result := make([]acp.McpServer, 0, len(servers))
 	for _, s := range servers {
 		var ms acp.McpServer

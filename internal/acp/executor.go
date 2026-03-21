@@ -64,7 +64,7 @@ func (e *Executor) Execute(ctx context.Context, req Request, agentCfg config.ACP
 	})
 	if err != nil {
 		e.log.Errorw("acp executor: prompt failed",
-			"scope", req.ScopeKey, "error", err)
+			"scope", req.ScopeKey, "error", err, "error_detail", acpErrorDetail(err))
 		return Response{}, fmt.Errorf("acp executor: prompt for scope %q: %w", req.ScopeKey, err)
 	}
 
